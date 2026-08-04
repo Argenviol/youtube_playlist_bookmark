@@ -1,0 +1,968 @@
+/* ============================================================================
+   content.css — YouTube 다크 테마 위에 얹는 스타일
+   강조색은 호박색(#f0b32a) 계열을 구분선 라벨/점/플래시에만 절제해서 사용.
+   ============================================================================ */
+
+:root {
+  --ytpd-amber: #f0b32a;
+  --ytpd-amber-dim: rgba(240, 179, 42, 0.5);
+  --ytpd-bg: rgba(28, 28, 30, 0.96);
+  --ytpd-bg-soft: rgba(255, 255, 255, 0.06);
+  --ytpd-text: #e8e8ea;
+  --ytpd-text-dim: #9aa0a6;
+  --ytpd-border: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- 항목 hover 도구 모음 (body 에 fixed — 유튜브 DOM 에 안 넣음) ------ */
+.ytpd-item-tools {
+  gap: 6px;                    /* 위치/표시는 JS 인라인 스타일(fixed)로 제어 */
+}
+.ytpd-tool-btn {
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  background: var(--ytpd-bg);
+  border: 1px solid var(--ytpd-amber-dim);
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.ytpd-tool-btn:hover {
+  background: var(--ytpd-amber);
+  color: #1c1c1e;
+}
+
+/* 구분선 이동 모드: 평소엔 "여기로" 숨김, 이동 모드에선 그것만 항상 표시 */
+.ytpd-tool-here {
+  display: none;
+}
+body.ytpd-move-mode .ytpd-item-tools .ytpd-tool-btn:not(.ytpd-tool-here) {
+  display: none;
+}
+body.ytpd-move-mode .ytpd-tool-here {
+  display: inline-block;
+}
+
+/* ---------- body 모달 (구분선 이름 / 보내기 선택) ------------------------- */
+.ytpd-modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ytpd-modal {
+  width: 320px;
+  max-width: 86vw;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--ytpd-bg);
+  color: var(--ytpd-text);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+}
+.ytpd-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  margin-bottom: 10px;
+}
+.ytpd-modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--ytpd-text);
+  background: #111;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  outline: none;
+}
+.ytpd-modal-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 11px 12px;
+  margin-bottom: 7px;
+  font-size: 13.5px;
+  color: var(--ytpd-text);
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-modal-opt:hover:not(:disabled) {
+  background: var(--ytpd-bg-soft);
+  color: var(--ytpd-amber);
+}
+.ytpd-modal-opt:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ytpd-modal-text {
+  width: 100%;
+  box-sizing: border-box;
+  height: 260px;
+  padding: 8px 10px;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ytpd-text);
+  background: #111;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  white-space: pre;
+}
+.ytpd-modal-opt-desc {
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ytpd-text-dim);
+  white-space: normal;
+}
+
+/* 옮기는 중인 구분선 강조 */
+.ytpd-divider-moving {
+  outline: 2px dashed var(--ytpd-amber);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.ytpd-divider-label {
+  cursor: pointer;
+}
+
+/* ---------- "구분선으로 보내기" 선택 메뉴 --------------------------------- */
+.ytpd-move-menu {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 7;
+  min-width: 200px;
+  max-width: 60vw;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: var(--ytpd-bg);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.ytpd-move-title {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-move-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--ytpd-text);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-move-opt:hover:not(:disabled) {
+  background: var(--ytpd-bg-soft);
+  color: var(--ytpd-amber);
+}
+.ytpd-move-opt:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- 인라인 입력창 (구분선 이름) ----------------------------------- */
+.ytpd-inline {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 6;
+  background: var(--ytpd-bg);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.ytpd-inline input {
+  width: 240px;
+  max-width: 60vw;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--ytpd-text);
+  background: #111;
+  border: 1px solid var(--ytpd-amber-dim);
+  border-radius: 6px;
+  outline: none;
+}
+
+/* ---------- 구분선 본체 --------------------------------------------------- */
+.ytpd-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+  padding: 2px 4px;
+  position: relative;
+}
+.ytpd-divider-label {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c1c1e;
+  background: var(--ytpd-amber);
+  border-radius: 6px;
+  letter-spacing: 0.2px;
+}
+.ytpd-divider-line {
+  flex: 1 1 auto;
+  height: 1px;
+  /* 호박색에서 투명으로 사라지는 hairline */
+  background: linear-gradient(90deg, var(--ytpd-amber-dim), rgba(255, 255, 255, 0.04));
+}
+.ytpd-divider-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+
+/* 구분선의 영상 추가 / 삭제 버튼: hover 시 표시 */
+.ytpd-divider .ytpd-add-video,
+.ytpd-divider .ytpd-divider-del {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+.ytpd-divider:hover .ytpd-add-video,
+.ytpd-divider:hover .ytpd-divider-del {
+  opacity: 1;
+}
+.ytpd-divider .ytpd-add-video {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ytpd-amber);
+  background: transparent;
+  border: 1px solid var(--ytpd-amber-dim);
+}
+.ytpd-divider .ytpd-add-video:hover:not(:disabled) {
+  background: var(--ytpd-amber);
+  color: #1c1c1e;
+}
+.ytpd-divider .ytpd-add-video:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--ytpd-border);
+  color: var(--ytpd-text-dim);
+}
+.ytpd-divider .ytpd-divider-del {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  color: var(--ytpd-text-dim);
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+}
+.ytpd-divider .ytpd-divider-del:hover {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+/* 영상 추가 입력 — 구분선 패널 맨 아래 영역 (평소엔 숨김) */
+.ytpd-addvideo-footer {
+  display: none;
+  flex: 0 0 auto;
+  padding: 8px;
+  border-top: 1px solid var(--ytpd-border);
+}
+.ytpd-addvideo-footer.ytpd-open {
+  display: block;
+}
+.ytpd-addvideo-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  margin-bottom: 6px;
+}
+.ytpd-addvideo-title > span {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-addvideo-close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ytpd-addvideo-close:hover {
+  color: var(--ytpd-amber);
+  border-color: var(--ytpd-amber-dim);
+}
+.ytpd-addvideo-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--ytpd-text);
+  background: #111;
+  border: 1px solid var(--ytpd-amber-dim);
+  border-radius: 6px;
+  outline: none;
+}
+
+/* ---------- 점프 플래시 애니메이션 --------------------------------------- */
+/* 점프한 영상 강조 — 도착할 때까지 남아 있어야 하므로 사라지지 않는 표시.
+   (애니메이션을 계속 돌리지 않아 무거워지지 않는다) */
+.ytpd-flash {
+  border-radius: 10px;
+  outline: 4px solid var(--ytpd-amber);
+  outline-offset: 2px;
+  background: rgba(240, 179, 42, 0.16);
+  box-shadow: 0 0 30px rgba(240, 179, 42, 0.55);
+}
+
+
+/* ---------- 떠 있는 패널 (6방향 위치) ------------------------------------ */
+#ytpd-panel {
+  position: fixed;
+  z-index: 9999;
+  width: 372px;
+  max-height: 66vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ytpd-bg);
+  color: var(--ytpd-text);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+  overflow: hidden;
+}
+/* 오른쪽 위 / 오른쪽 아래 */
+#ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: 18px; left: auto; }
+#ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: 18px; left: auto; }
+.ytpd-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ytpd-border);
+}
+.ytpd-panel-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--ytpd-amber);
+}
+.ytpd-spacer { flex: 1 1 auto; }
+.ytpd-panel-head button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ytpd-text);
+  background: var(--ytpd-bg-soft);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.ytpd-panel-head button:hover {
+  color: #1c1c1e;
+  background: var(--ytpd-amber);
+  border-color: var(--ytpd-amber);
+}
+/* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
+.ytpd-panel-head .ytpd-set {
+  font-size: 15px;
+}
+.ytpd-panel-head .ytpd-pos {
+  font-size: 14px;
+}
+.ytpd-panel-head button:hover {
+  border-color: var(--ytpd-amber-dim);
+}
+.ytpd-panel-head .ytpd-auth.ytpd-signed {
+  color: var(--ytpd-amber);
+  border-color: var(--ytpd-amber-dim);
+}
+
+/* ---------- 설정 모달 ------------------------------------------------------ */
+.ytpd-modal.ytpd-modal-wide {
+  width: 420px;
+}
+.ytpd-set-sec {
+  padding: 12px 0;
+  border-top: 1px solid var(--ytpd-border);
+}
+.ytpd-set-sec:first-of-type {
+  border-top: none;
+}
+.ytpd-set-h {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  margin-bottom: 6px;
+}
+.ytpd-set-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ytpd-text-dim);
+  margin-bottom: 10px;
+}
+.ytpd-set-label {
+  font-size: 12px;
+  color: var(--ytpd-text-dim);
+  margin: 8px 0 4px;
+}
+.ytpd-set-status {
+  font-size: 12.5px;
+  color: var(--ytpd-text-dim);
+  margin-bottom: 8px;
+}
+.ytpd-set-status.ytpd-set-ok {
+  color: var(--ytpd-amber);
+}
+.ytpd-set-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.ytpd-set-row .ytpd-modal-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ytpd-set-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ytpd-text);
+  background: var(--ytpd-bg-soft);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ytpd-set-btn:hover {
+  color: var(--ytpd-amber);
+  border-color: var(--ytpd-amber-dim);
+  background: rgba(240, 179, 42, 0.1);
+}
+.ytpd-set-btn.ytpd-set-danger {
+  color: #e88;
+  border-color: rgba(224, 87, 79, 0.45);
+}
+.ytpd-set-btn.ytpd-set-danger:hover {
+  background: #e0574f;
+  border-color: #e0574f;
+  color: #fff;
+}
+.ytpd-set-link {
+  display: inline-block;
+  text-decoration: none;
+  line-height: 1.6;
+}
+.ytpd-set-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--ytpd-text);
+  cursor: pointer;
+}
+.ytpd-set-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--ytpd-border);
+  padding-top: 12px;
+}
+
+.ytpd-panel-body {
+  overflow-y: auto;
+  padding: 6px;
+  min-height: 0;
+}
+#ytpd-panel.ytpd-collapsed .ytpd-panel-body {
+  display: none;
+}
+
+.ytpd-empty {
+  font-size: 12.5px;
+  padding: 12px 8px;
+  color: var(--ytpd-text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- 패널 맨 위: 현재 재생목록 + 다른 재생목록 목록 ------------------ */
+.ytpd-plhead {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ytpd-border);
+}
+.ytpd-plhead-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ytpd-plhead-bar:hover {
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-plhead-name {
+  flex: 1 1 auto;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ytpd-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 접기/펼치기 화살표 — 버튼처럼 보이게 크고 또렷하게 */
+.ytpd-caret-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ytpd-text);
+  background: var(--ytpd-bg-soft);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.ytpd-plhead-bar:hover .ytpd-caret-btn,
+.ytpd-sechead:hover .ytpd-caret-btn {
+  color: #1c1c1e;
+  background: var(--ytpd-amber);
+  border-color: var(--ytpd-amber);
+}
+.ytpd-plhead-list {
+  padding: 4px 8px 2px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-plhead-item {
+  display: block;
+  padding: 5px 6px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+  color: var(--ytpd-text-dim);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-plhead-item:hover {
+  background: var(--ytpd-bg-soft);
+  color: var(--ytpd-amber);
+}
+.ytpd-plhead-item.ytpd-plhead-cur {
+  color: var(--ytpd-amber);
+  font-weight: 600;
+}
+.ytpd-plhead-none {
+  padding: 4px 6px;
+  opacity: 0.7;
+}
+
+/* ---------- 북마크 목록 접기/펼치기 머리 --------------------------------- */
+.ytpd-sechead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 9px;
+  border-top: 1px solid var(--ytpd-border);
+  border-radius: 0 0 8px 8px;
+  cursor: pointer;
+}
+.ytpd-sechead:hover {
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-sechead-name {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--ytpd-text);
+}
+
+
+.ytpd-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ytpd-row:hover {
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-row-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ytpd-amber);
+}
+
+/* 기본 북마크(맨 처음/맨 끝) 행 */
+.ytpd-row-nav .ytpd-row-name {
+  color: var(--ytpd-text-dim);
+  font-weight: 600;
+}
+.ytpd-row-dot.ytpd-dot-nav {
+  background: var(--ytpd-text-dim);
+}
+.ytpd-row-nav-end {
+  border-bottom: 1px solid var(--ytpd-border);
+  margin-bottom: 4px;
+  padding-bottom: 9px;
+}
+.ytpd-row-name {
+  flex: 1 1 auto;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-row-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-row-meta.ytpd-row-missing {
+  color: #d98c8c;
+}
+.ytpd-row-group {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 3px;
+}
+.ytpd-row-add {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ytpd-amber);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.ytpd-row:hover .ytpd-row-add {
+  opacity: 1;
+  border-color: var(--ytpd-amber-dim);
+}
+.ytpd-row-add:hover {
+  background: var(--ytpd-amber);
+  color: #1c1c1e;
+  opacity: 1;
+}
+.ytpd-row-add.ytpd-btn-danger:hover {
+  background: #e0574f;
+  border-color: #e0574f;
+  color: #fff;
+}
+.ytpd-row-add.ytpd-btn-active {
+  opacity: 1;
+  background: var(--ytpd-amber);
+  border-color: var(--ytpd-amber);
+  color: #1c1c1e;
+}
+.ytpd-row-moving {
+  outline: 1px dashed var(--ytpd-amber);
+  outline-offset: -1px;
+}
+
+/* ---------- 분석 배지 (DOM 항목 위) -------------------------------------- */
+ytd-playlist-video-renderer .ytpd-badge {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 5;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.ytpd-badge-problem {
+  color: #2a0f0f;
+  background: #ff6b6b;
+}
+.ytpd-badge-dup {
+  color: #1c1c1e;
+  background: #ffd479;
+}
+
+/* ---------- 패널: 검색 (노래제목 / 가수) -------------------------------- */
+.ytpd-search {
+  margin-bottom: 6px;
+}
+.ytpd-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--ytpd-text);
+  background: #111;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  outline: none;
+}
+.ytpd-search-input:focus {
+  border-color: var(--ytpd-amber-dim);
+}
+.ytpd-search-results {
+  margin-top: 4px;
+}
+.ytpd-search-results:empty {
+  display: none;
+}
+.ytpd-search-status {
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--ytpd-text);
+}
+.ytpd-search-status b {
+  color: var(--ytpd-amber);
+}
+.ytpd-search-src {
+  color: var(--ytpd-text-dim);
+  font-size: 11px;
+}
+.ytpd-search-tip {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ytpd-search-row:hover {
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-search-name {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-search-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 패널: 분석 결과 블록 ----------------------------------------- */
+.ytpd-analysis {
+  margin-bottom: 6px;
+}
+.ytpd-analysis:empty {
+  display: none;
+}
+.ytpd-analysis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  border-bottom: 1px dashed var(--ytpd-border);
+}
+.ytpd-analysis-clear {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ytpd-analysis-clear:hover {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+.ytpd-analysis-grouptitle {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-analysis-dupgroup {
+  padding: 5px 8px 1px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-analysis-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ytpd-analysis-row:hover {
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-analysis-row.ytpd-analysis-noid {
+  cursor: default;
+  opacity: 0.6;
+}
+.ytpd-analysis-name {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ytpd-analysis-problem .ytpd-analysis-name::before {
+  content: "⚠ ";
+}
+.ytpd-analysis-dup .ytpd-analysis-name::before {
+  content: "🔁 ";
+}
+.ytpd-analysis-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #d98c8c;
+}
+.ytpd-analysis-hint {
+  padding: 2px 8px 4px;
+  font-size: 11px;
+  color: var(--ytpd-text-dim);
+}
+
+/* 제거(🗑) 버튼 — 행 hover 시 표시 */
+.ytpd-analysis-del {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+}
+.ytpd-analysis-row:hover .ytpd-analysis-del {
+  opacity: 1;
+}
+.ytpd-analysis-del:hover {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+}
+
+/* 제거된 항목 기록 */
+.ytpd-removed-head {
+  color: var(--ytpd-text-dim);
+  margin-top: 4px;
+}
+.ytpd-removed-row {
+  cursor: default;
+  opacity: 0.75;
+}
+.ytpd-removed-row .ytpd-analysis-name {
+  text-decoration: line-through;
+}
+
+/* ---------- 토스트 ------------------------------------------------------- */
+#ytpd-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 10000;
+  padding: 10px 16px;
+  background: var(--ytpd-bg);
+  color: var(--ytpd-text);
+  border: 1px solid var(--ytpd-amber-dim);
+  border-radius: 999px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+#ytpd-toast.ytpd-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---------- 모션 최소화 존중 -------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .ytpd-flash { animation: none; }
+  #ytpd-toast { transition: opacity 0.15s ease; }
+}
+
+/* ---------- 모달이 열려 있는 동안 뒤 페이지 고정 ------------------------- */
+html.ytpd-modal-open,
+html.ytpd-modal-open body {
+  overflow: hidden !important;
+}

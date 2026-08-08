@@ -2013,14 +2013,21 @@
 
   /**
    * 옮긴 영상을 화면(유튜브 목록)에서도 기준 영상 바로 뒤로 이동시킨다.
-   * 두 영상이 모두 로드돼 있을 때만 동작하고, 사용자가 버튼을 누른 그 순간
-   * 딱 한 번만 DOM 을 건드린다(상시 감시 없음) → 예전 같은 렉/무한로딩 없음.
+   * 기준 영상이 아직 로딩 안 된 경우(북마크가 멀리 있음) "점프"와 같은 방식
+   * (ensureLoaded — 스크롤하며 찾기)으로 한 번 로딩을 시도한 뒤 반영한다.
+   * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다
+   * (예전 같은 렉/무한로딩 없음).
    * @returns 반영했으면 true
    */
-  function reflectMoveInDOM(movingVid, refVid) {
+  async function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
-    const refNode = findItemByVideoId(refVid);
-    if (!movingNode || !refNode || movingNode === refNode) return false;
+    if (!movingNode) return false;
+    let refNode = findItemByVideoId(refVid);
+    if (!refNode) {
+      toast("화면에 반영하는 중… (기준 영상 로딩)");
+      refNode = await ensureLoaded(refVid);
+    }
+    if (!refNode || movingNode === refNode) return false;
     if (refNode.nextElementSibling !== movingNode) {
       refNode.after(movingNode); // 기준 바로 뒤로
     }
@@ -2089,12 +2096,13 @@
 
       lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
       searchCorpus = null;
-      // 새로고침 없이 화면에도 바로 반영 (로드된 항목이면 DOM 에서 자리 이동).
-      const reflected = reflectMoveInDOM(videoId, domRefVid);
+      // 새로고침 없이 화면에도 바로 반영. 기준 영상이 아직 로딩 안 됐으면
+      // 점프처럼 스크롤하며 찾은 뒤 반영한다(오래 걸릴 수 있음).
+      const reflected = await reflectMoveInDOM(videoId, domRefVid);
       toast(
         reflected
           ? `"${section.label}" 밑으로 옮겼어요`
-          : `"${section.label}" 밑으로 옮겼어요 (멀리 있어 화면 반영은 새로고침 후)`
+          : `"${section.label}" 밑으로 옮겼어요 (화면 반영에 실패해 새로고침이 필요해요)`
       );
       scheduleRender();
     } catch (err) {

@@ -7,14 +7,11 @@
 //   → 영상을 옮기거나 추가해도 북마크가 그 영상을 따라간다.
 //
 // 핵심 기능:
-//   - 북마크 추가/삭제/점프
-//   - 재생목록에 "이미 있는" 영상을 골라 북마크 바로 밑(섹션 맨 위)으로 이동
-//   - URL/ID 로 새 영상을 북마크 바로 밑에 추가
+//   - 북마크 추가/삭제/점프/검색/이름 바꾸기
+//   - 북마크를 다른(멀리 있는) 영상으로 재배치 ("📍여기로")
 //
-// 쓰기 동작(이동/추가)은 YouTube Data API v3 가 필요하고, 이는 OAuth 로그인이
-// 필수다. 로그인 버튼은 따로 없고, 쓰기 동작이 처음 필요할 때 구글 로그인 창이
-// 자동으로 한 번 뜬다(그 뒤로는 자동). 인증·API 호출은 background.js 가 담당하고,
-// 여기서는 chrome.runtime.sendMessage 로 요청만 한다.
+// 전부 로컬 저장(chrome.storage.local)만 쓰고, 구글 로그인이나 외부 API 호출은
+// 없다.
 //
 // 저장: chrome.storage.local, 키 `pl:<playlistId>`,
 //      값 { sections: [{ id, label, anchorVideoId }] }
@@ -31,7 +28,6 @@
   let isRendering = false;        // 렌더 재진입 방지
   let isAutoJumping = false;      // 자동 로딩 점프 중에는 렌더 스킵
   let renderTimer = null;         // 렌더 디바운스 타이머
-  let signedIn = false;           // OAuth 로그인 상태 (자동 로그인)
   let panelEl = null;             // 우측 하단 패널 DOM
   let movingSectionId = null;     // 북마크 이동 모드 — 옮기는 중인 북마크 id
   let toolbarEl = null;           // 공용 hover 도구막대 (항목마다 만들지 않음)
@@ -162,105 +158,8 @@
     const t = getPlaylistTitle();
     if (t) data.title = t;
     return new Promise((resolve) => {
-      chrome.storage.local.set({ [storageKey()]: data }, () => {
-        schedulePush(); // 동기화 켜져 있을 때만 실제로 올라감
-        resolve();
-      });
+      chrome.storage.local.set({ [storageKey()]: data }, () => resolve());
     });
-  }
-
-  // ----- 기기 간 동기화 (구글 드라이브) ----------------------------------------
-  // 로컬 저장이 항상 기준이고, 동기화를 켠 경우에만 드라이브에 사본을 두어
-  // 다른 PC 와 주고받는다. 유튜브 페이지를 건드리는 동작이 전혀 없어 부담이 없다.
-  let pushTimer = null;
-  let syncOn = false;
-
-  function loadSyncFlag() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(["ytpd:sync"], (res) => {
-        syncOn = res["ytpd:sync"] === true;
-        resolve(syncOn);
-      });
-    });
-  }
-
-  function setSyncFlag(on) {
-    syncOn = on;
-    return new Promise((r) => chrome.storage.local.set({ "ytpd:sync": on }, () => r()));
-  }
-
-  /** 저장 직후 호출 — 여러 번 눌러도 3초에 한 번만 업로드 */
-  function schedulePush() {
-    if (!syncOn) return;
-    if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(() => {
-      pushTimer = null;
-      pushToDrive().catch(() => {});
-    }, 3000);
-  }
-
-  /** 두 북마크 묶음을 합친다 — id 기준 합집합, 같은 영상 중복은 하나만 */
-  function mergeSections(localArr, remoteArr, remoteIsNewer) {
-    const byId = new Map();
-    const first = remoteIsNewer ? remoteArr : localArr;
-    const second = remoteIsNewer ? localArr : remoteArr;
-    for (const s of first || []) byId.set(s.id, s);
-    for (const s of second || []) if (!byId.has(s.id)) byId.set(s.id, s);
-
-    const seenAnchor = new Set();
-    const out = [];
-    for (const s of byId.values()) {
-      if (!s || !s.anchorVideoId) continue;
-      if (seenAnchor.has(s.anchorVideoId)) continue; // 같은 영상에 북마크 2개 방지
-      seenAnchor.add(s.anchorVideoId);
-      out.push({ id: s.id, label: s.label, anchorVideoId: s.anchorVideoId });
-    }
-    return out;
-  }
-
-  /** 로컬 전체(pl:*)를 드라이브 문서에 합쳐 올린다 */
-  async function pushToDrive(interactive = false) {
-    const { doc } = await bg("driveLoad", { interactive });
-    const all = await new Promise((r) => chrome.storage.local.get(null, r));
-    for (const key of Object.keys(all)) {
-      if (!key.startsWith(STORAGE_PREFIX)) continue;
-      const pid = key.slice(STORAGE_PREFIX.length);
-      const local = all[key] || { sections: [] };
-      const remote = doc.playlists[pid];
-      const remoteIsNewer = !!remote && (remote.updatedAt || 0) > (local.updatedAt || 0);
-      doc.playlists[pid] = {
-        sections: mergeSections(local.sections, remote && remote.sections, remoteIsNewer),
-        updatedAt: Math.max(local.updatedAt || 0, (remote && remote.updatedAt) || 0),
-      };
-    }
-    await bg("driveSave", { doc, interactive });
-  }
-
-  /** 드라이브 내용을 로컬에 합쳐 내린다. 현재 재생목록은 화면도 갱신 */
-  async function pullFromDrive(interactive = false) {
-    const { doc } = await bg("driveLoad", { interactive });
-    const all = await new Promise((r) => chrome.storage.local.get(null, r));
-    const writes = {};
-    for (const pid of Object.keys(doc.playlists || {})) {
-      const remote = doc.playlists[pid] || { sections: [] };
-      const local = all[STORAGE_PREFIX + pid] || { sections: [] };
-      const remoteIsNewer = (remote.updatedAt || 0) > (local.updatedAt || 0);
-      writes[STORAGE_PREFIX + pid] = {
-        sections: mergeSections(local.sections, remote.sections, remoteIsNewer),
-        // 재생목록 이름은 로컬 캐시를 유지한다 (동기화 문서에는 안 올라가므로
-        // 여기서 빠뜨리면 불러올 때마다 이름이 지워진다)
-        title: local.title || remote.title || "",
-        updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0),
-      };
-    }
-    if (Object.keys(writes).length) {
-      await new Promise((r) => chrome.storage.local.set(writes, r));
-    }
-    const mine = writes[storageKey()];
-    if (mine) {
-      data = mine;
-      scheduleRender();
-    }
   }
 
   // ----- 패널 위치 (오른쪽 위 ↔ 오른쪽 아래, 전역 저장) ------------------------
@@ -394,9 +293,6 @@
   async function deleteSection(id) {
     data.sections = data.sections.filter((s) => s.id !== id);
     if (movingSectionId === id) exitMoveMode();
-    // 지운 북마크의 "영상 추가" 입력칸이 열려 있으면 같이 닫는다
-    const footer = panelEl && panelEl.querySelector(".ytpd-addvideo-footer");
-    if (footer && footer.dataset.sectionId === id) closeAddVideoInput();
     await saveSections();
     scheduleRender();
   }
@@ -511,23 +407,6 @@
       if (hoverItem) openInlineInput(hoverItem);
     });
 
-    const moveBtn = document.createElement("button");
-    moveBtn.type = "button";
-    moveBtn.className = "ytpd-tool-btn ytpd-tool-move";
-    moveBtn.textContent = "↦북마크";
-    moveBtn.title = "이 영상을 북마크 바로 밑으로 보내기";
-    moveBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!hoverItem) return;
-      const vid = getVideoId(hoverItem);
-      if (!vid) {
-        toast("이 항목의 영상 ID를 찾지 못했어요");
-        return;
-      }
-      openMoveMenu(hoverItem, vid);
-    });
-
     const hereBtn = document.createElement("button");
     hereBtn.type = "button";
     hereBtn.className = "ytpd-tool-btn ytpd-tool-here";
@@ -541,7 +420,6 @@
     });
 
     tb.appendChild(addDiv);
-    tb.appendChild(moveBtn);
     tb.appendChild(hereBtn);
     return tb;
   }
@@ -630,18 +508,6 @@
     });
   }
 
-  /** "어느 북마크 밑으로 보낼까" 선택 (body 모달) */
-  function openMoveMenu(item, vid) {
-    if (!data.sections.length) {
-      toast("먼저 북마크를 만들어 주세요");
-      return;
-    }
-    const domPos = getVideoItems().indexOf(item);
-    modalChoose("어느 북마크 밑으로 보낼까요?", data.sections, vid, (s) => {
-      moveVideoToSection(vid, s, domPos >= 0 ? domPos : null);
-    });
-  }
-
   // ----- body 모달 (유튜브 DOM 밖) --------------------------------------------
   function modalInput(titleText, placeholder, onOk, initial) {
     const back = document.createElement("div");
@@ -677,142 +543,6 @@
     back.addEventListener("click", (e) => {
       if (e.target === back) close();
     });
-  }
-
-  // ----- 백업 / 복원 -----------------------------------------------------------
-  // 북마크는 브라우저 내부 저장소(LevelDB)에 들어가서 폴더를 열어도 읽을 수 없다.
-  // 그래서 "폴더 열기" 대신 사람이 읽을 수 있는 JSON 파일로 내보내고 되돌린다.
-
-  /** 모든 재생목록의 북마크를 JSON 파일로 내려받는다 */
-  async function exportBookmarks() {
-    const all = await new Promise((r) => chrome.storage.local.get(null, r));
-    const doc = { version: 1, exportedAt: new Date().toISOString(), playlists: {} };
-    let n = 0;
-    for (const key of Object.keys(all)) {
-      if (!key.startsWith(STORAGE_PREFIX)) continue;
-      const pid = key.slice(STORAGE_PREFIX.length);
-      const v = all[key] || {};
-      if (!Array.isArray(v.sections) || !v.sections.length) continue;
-      doc.playlists[pid] = {
-        sections: v.sections,
-        title: v.title || "",
-        updatedAt: v.updatedAt || 0,
-      };
-      n++;
-    }
-    if (!n) {
-      toast("내보낼 북마크가 없어요");
-      return;
-    }
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `youtube-bookmarks-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast(`재생목록 ${n}개를 내보냈어요`);
-  }
-
-  /** 파일에서 읽은 북마크 항목을 안전한 형태로 정리 */
-  function sanitizeSections(arr) {
-    const out = [];
-    const seen = new Set();
-    for (const s of Array.isArray(arr) ? arr : []) {
-      if (!s || typeof s !== "object") continue;
-      const anchor = typeof s.anchorVideoId === "string" ? s.anchorVideoId : "";
-      if (!anchor || seen.has(anchor)) continue;
-      seen.add(anchor);
-      out.push({
-        id: typeof s.id === "string" && s.id ? s.id : uid(),
-        label: typeof s.label === "string" && s.label ? s.label : "북마크",
-        anchorVideoId: anchor,
-      });
-    }
-    return out;
-  }
-
-  /**
-   * 내보낸 JSON 파일을 읽어 되돌린다.
-   * 기존 북마크가 있으면 "합치기 / 파일 그대로" 중에 고르게 한다.
-   *  - 합치기      : 양쪽을 합집합으로 (아무것도 사라지지 않음)
-   *  - 파일 그대로 : 해당 재생목록을 파일 내용으로 교체 (내보낸 시점 그대로 복원)
-   */
-  function importBookmarks(file) {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      let doc;
-      try {
-        doc = JSON.parse(reader.result);
-      } catch (_) {
-        toast("파일을 읽을 수 없어요 (JSON 형식이 아닙니다)");
-        return;
-      }
-      if (!doc || typeof doc !== "object" || !doc.playlists) {
-        toast("이 확장에서 내보낸 파일이 아니에요");
-        return;
-      }
-
-      const all = await new Promise((r) => chrome.storage.local.get(null, r));
-
-      // 파일에 든 재생목록 중 이 PC 에도 북마크가 있는 게 있는지
-      const conflict = Object.keys(doc.playlists).some((pid) => {
-        const l = all[STORAGE_PREFIX + pid];
-        return l && Array.isArray(l.sections) && l.sections.length;
-      });
-
-      if (!conflict) {
-        applyImport(doc, all, false); // 겹치는 게 없으면 그대로 복원
-        return;
-      }
-
-      modalPick("이미 북마크가 있어요", [
-        {
-          label: "합치기 (아무것도 안 지움)",
-          desc: "파일과 지금 것을 모두 남깁니다",
-          onPick: () => applyImport(doc, all, false),
-        },
-        {
-          label: "파일 그대로 복원",
-          desc: "겹치는 재생목록은 파일 내용으로 교체합니다",
-          onPick: () => applyImport(doc, all, true),
-        },
-      ]);
-    };
-    reader.readAsText(file);
-  }
-
-  async function applyImport(doc, all, replace) {
-    const writes = {};
-    let n = 0;
-    for (const pid of Object.keys(doc.playlists)) {
-      const incoming = doc.playlists[pid] || {};
-      const incomingSections = sanitizeSections(incoming.sections);
-      if (!incomingSections.length) continue;
-      const local = all[STORAGE_PREFIX + pid] || { sections: [] };
-      const incomingIsNewer = (incoming.updatedAt || 0) > (local.updatedAt || 0);
-      writes[STORAGE_PREFIX + pid] = {
-        sections: replace
-          ? incomingSections // 파일 그대로 (순서까지 동일)
-          : mergeSections(local.sections, incomingSections, incomingIsNewer),
-        title: local.title || incoming.title || "",
-        updatedAt: Date.now(),
-      };
-      n++;
-    }
-    if (!n) {
-      toast("파일에 북마크가 없어요");
-      return;
-    }
-    await new Promise((r) => chrome.storage.local.set(writes, r));
-    const mine = writes[storageKey()];
-    if (mine) {
-      data = mine;
-      scheduleRender();
-    }
-    toast(`재생목록 ${n}개를 가져왔어요` + (replace ? " (파일 그대로)" : " (합치기)"));
   }
 
   // ----- 모달 공통 (열려 있는 동안 뒤 페이지 스크롤 잠금) ----------------------
@@ -853,52 +583,6 @@
         window.scrollTo(0, lockedScrollY);
       }
     }
-  }
-
-  /** 긴 텍스트를 그 자리에서 보여주는 모달 (새 탭을 열면 팝업 차단에 걸림) */
-  function modalText(titleText, text) {
-    const back = document.createElement("div");
-    back.className = "ytpd-modal-back";
-    const box = document.createElement("div");
-    box.className = "ytpd-modal ytpd-modal-wide";
-
-    const h = document.createElement("div");
-    h.className = "ytpd-modal-title";
-    h.textContent = titleText;
-
-    const area = document.createElement("textarea");
-    area.className = "ytpd-modal-text";
-    area.readOnly = true;
-    area.value = text;
-
-    const row = document.createElement("div");
-    row.className = "ytpd-set-row ytpd-set-foot";
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "ytpd-set-btn";
-    copy.textContent = "복사";
-    copy.addEventListener("click", () => {
-      navigator.clipboard.writeText(text).then(
-        () => toast("복사했어요"),
-        () => toast("복사 실패 — 직접 선택해 복사해 주세요")
-      );
-    });
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "ytpd-set-btn";
-    close.textContent = "닫기";
-    close.addEventListener("click", () => closeModal(back));
-    row.appendChild(copy);
-    row.appendChild(close);
-
-    box.appendChild(h);
-    box.appendChild(area);
-    box.appendChild(row);
-    back.appendChild(box);
-    back.addEventListener("click", (e) => {
-      if (e.target === back) closeModal(back);
-    });
-    mountModal(back);
   }
 
   /** 버튼 여러 개 중 하나를 고르는 작은 모달 */
@@ -943,358 +627,6 @@
   }
 
   // ============================================================================
-  // 설정 탭 (⚙) — 동기화 + 본인 구글 API
-  //
-  // 열었을 때만 만들어지고 닫으면 사라진다. 평소에는 아무 비용이 없다.
-  // ============================================================================
-  async function openSettings() {
-
-    const back = document.createElement("div");
-    back.className = "ytpd-modal-back";
-    const box = document.createElement("div");
-    box.className = "ytpd-modal ytpd-modal-wide";
-    box.innerHTML = `
-      <div class="ytpd-modal-title">⚙ 설정</div>
-
-      <div class="ytpd-set-sec">
-        <div class="ytpd-set-h">기기 간 동기화</div>
-        <div class="ytpd-set-desc">
-          구글 계정으로 로그인하면 북마크가 내 구글 드라이브(앱 전용 폴더)에 저장되어
-          다른 PC 와 같은 내용을 볼 수 있어요. 로그인하지 않아도 이 PC 에서는 그대로 동작합니다.
-        </div>
-        <div class="ytpd-set-status" data-auth>확인 중…</div>
-        <div class="ytpd-set-row">
-          <button type="button" class="ytpd-set-btn" data-login>구글 로그인</button>
-          <button type="button" class="ytpd-set-btn" data-logout>로그아웃</button>
-        </div>
-        <label class="ytpd-set-check">
-          <input type="checkbox" data-synctoggle> 동기화 사용
-        </label>
-        <div class="ytpd-set-row">
-          <button type="button" class="ytpd-set-btn" data-pull>지금 불러오기</button>
-          <button type="button" class="ytpd-set-btn" data-push>지금 올리기</button>
-        </div>
-        <div class="ytpd-set-label">
-          드라이브에 저장된 파일 — 내 드라이브 안의 <b>앱 전용 폴더</b>에 있는
-          <code>ytpd-bookmarks.json</code> 하나입니다.
-          바뀔 때마다 <b>덮어쓰기</b>라 파일이 쌓이지 않아요.
-        </div>
-        <div class="ytpd-set-status" data-driveinfo>확인하려면 아래 버튼을 누르세요</div>
-        <div class="ytpd-set-row">
-          <button type="button" class="ytpd-set-btn" data-drivecheck>파일 확인</button>
-          <button type="button" class="ytpd-set-btn" data-driveopen>내용 보기</button>
-          <button type="button" class="ytpd-set-btn ytpd-set-danger" data-drivedel>드라이브에서 삭제</button>
-        </div>
-      </div>
-
-      <div class="ytpd-set-sec">
-        <div class="ytpd-set-h">내 구글 API (영상 이동·추가용)</div>
-        <div class="ytpd-set-desc">
-          영상을 옮기거나 추가하려면 본인 구글 클라우드의 OAuth 클라이언트 ID가 필요해요.
-          (북마크 만들기·점프·검색·이름변경은 설정 없이 그냥 됩니다.)
-          아래 리디렉션 URI 를 본인 OAuth 클라이언트(웹 애플리케이션)의
-          "승인된 리디렉션 URI" 에 등록해 주세요.
-        </div>
-        <div class="ytpd-set-label">리디렉션 URI</div>
-        <div class="ytpd-set-row">
-          <input class="ytpd-modal-input" data-redirect readonly>
-          <button type="button" class="ytpd-set-btn" data-copy>복사</button>
-        </div>
-        <div class="ytpd-set-label">OAuth 클라이언트 ID</div>
-        <input class="ytpd-modal-input" data-clientid placeholder="000000-xxxx.apps.googleusercontent.com">
-        <div class="ytpd-set-row">
-          <button type="button" class="ytpd-set-btn" data-savekey>저장</button>
-        </div>
-      </div>
-
-      <div class="ytpd-set-sec">
-        <div class="ytpd-set-h">백업 / 복원</div>
-        <div class="ytpd-set-desc">
-          북마크는 브라우저 내부 저장소에 들어가서 폴더를 열어도 읽을 수 없는 형식입니다.
-          대신 아래로 파일 하나에 내보내고 되돌릴 수 있어요.
-          가져오기는 <b>기존 북마크를 지우지 않고 합칩니다.</b>
-        </div>
-        <div class="ytpd-set-row">
-          <button type="button" class="ytpd-set-btn" data-export>파일로 내보내기</button>
-          <button type="button" class="ytpd-set-btn" data-import>파일에서 가져오기</button>
-          <input type="file" accept="application/json,.json" data-importfile hidden>
-        </div>
-      </div>
-
-      <div class="ytpd-set-row ytpd-set-foot">
-        <button type="button" class="ytpd-set-btn" data-close>닫기</button>
-      </div>`;
-    back.appendChild(box);
-    mountModal(back);
-
-    const $ = (sel) => box.querySelector(sel);
-    const authEl = $("[data-auth]");
-    const syncCheck = $("[data-synctoggle]");
-
-    const paintAuth = () => {
-      authEl.textContent = signedIn ? "✓ 로그인됨" : "로그인 안 됨 (이 PC 에만 저장)";
-      authEl.classList.toggle("ytpd-set-ok", signedIn);
-    };
-
-    // 현재 상태 채우기
-    await refreshAuthState();
-    paintAuth();
-    await loadSyncFlag();
-    syncCheck.checked = syncOn;
-    chrome.storage.local.get(["ytpd:clientId"], (res) => {
-      $("[data-clientid]").value = res["ytpd:clientId"] || "";
-    });
-    bg("getRedirectUri")
-      .then((r) => ($("[data-redirect]").value = r.uri))
-      .catch(() => ($("[data-redirect]").value = "(확인 실패)"));
-
-    $("[data-login]").addEventListener("click", async () => {
-      try {
-        await bg("signIn");
-        signedIn = true;
-        paintAuth();
-        toast("로그인했어요");
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-
-    $("[data-logout]").addEventListener("click", async () => {
-      try {
-        await bg("signOut");
-        signedIn = false;
-        paintAuth();
-        toast("로그아웃했어요");
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-
-    syncCheck.addEventListener("change", async () => {
-      const on = syncCheck.checked;
-      if (on && !signedIn) {
-        syncCheck.checked = false;
-        toast("먼저 구글 로그인을 해주세요");
-        return;
-      }
-      await setSyncFlag(on);
-      toast(on ? "동기화를 켰어요" : "동기화를 껐어요");
-    });
-
-    $("[data-pull]").addEventListener("click", async () => {
-      toast("불러오는 중…");
-      try {
-        await pullFromDrive(true);
-        toast("불러왔어요");
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-
-    $("[data-push]").addEventListener("click", async () => {
-      toast("올리는 중…");
-      try {
-        await pushToDrive(true);
-        toast("올렸어요");
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-
-    $("[data-copy]").addEventListener("click", () => {
-      const v = $("[data-redirect]").value;
-      navigator.clipboard.writeText(v).then(
-        () => toast("복사했어요"),
-        () => toast("복사 실패 — 직접 선택해 복사해 주세요")
-      );
-    });
-
-    $("[data-savekey]").addEventListener("click", () => {
-      const v = $("[data-clientid]").value.trim();
-      chrome.storage.local.set({ "ytpd:clientId": v }, () => {
-        toast(v ? "저장했어요. 다음 로그인부터 적용됩니다" : "지웠어요");
-      });
-    });
-
-    // ----- 드라이브 파일 확인 -----
-    const infoEl = $("[data-driveinfo]");
-
-    const checkDrive = async () => {
-      infoEl.textContent = "확인 중…";
-      infoEl.classList.remove("ytpd-set-ok");
-      try {
-        const r = await bg("driveInfo", { interactive: true });
-        if (!r.exists) {
-          infoEl.textContent = "아직 올라간 파일이 없어요 ('지금 올리기'를 눌러보세요)";
-          return null;
-        }
-        const kb = (r.size / 1024).toFixed(1);
-        const when = r.modifiedTime ? new Date(r.modifiedTime).toLocaleString() : "?";
-        // 용량 걱정을 덜 수 있게 15GB 무료 용량 대비 비율도 같이 보여준다
-        const pct = ((r.size / (15 * 1024 * 1024 * 1024)) * 100).toFixed(6);
-        infoEl.textContent = `✓ ${r.name} · ${kb} KB (무료 15GB 의 ${pct}%) · ${when} 수정`;
-        infoEl.classList.add("ytpd-set-ok");
-        return r;
-      } catch (e) {
-        infoEl.textContent = "확인 실패: " + e.message;
-        return null;
-      }
-    };
-
-    $("[data-drivecheck]").addEventListener("click", checkDrive);
-
-    // 드라이브 앱 전용 폴더는 웹 화면으로 볼 수 없으므로 내용을 받아 그 자리에서 보여준다.
-    // (새 탭으로 열면 await 뒤라 사용자 조작 맥락이 풀려 팝업 차단에 걸린다)
-    $("[data-driveopen]").addEventListener("click", async () => {
-      toast("드라이브에서 내용을 받는 중…");
-      try {
-        const { doc } = await bg("driveLoad", { interactive: true });
-        const list = Object.keys(doc.playlists || {});
-        const summary = list.length
-          ? list
-              .map((pid) => {
-                const p = doc.playlists[pid] || {};
-                const n = Array.isArray(p.sections) ? p.sections.length : 0;
-                return `· ${p.title || pid} — 북마크 ${n}개`;
-              })
-              .join("\n")
-          : "(비어 있음)";
-        modalText(
-          "드라이브에 저장된 내용",
-          `${summary}\n\n────────────\n${JSON.stringify(doc, null, 2)}`
-        );
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-
-    // 드라이브 파일 삭제 — 되돌릴 수 없으므로 한 번 확인받는다
-    $("[data-drivedel]").addEventListener("click", () => {
-      modalPick("드라이브에서 삭제할까요?", [
-        {
-          label: "삭제",
-          desc: "드라이브의 동기화 파일만 지웁니다. 이 PC 의 북마크는 그대로 남아요.",
-          onPick: async () => {
-            try {
-              const r = await bg("driveDelete", { interactive: true });
-              if (syncOn) {
-                await setSyncFlag(false);
-                syncCheck.checked = false;
-              }
-              infoEl.textContent = r.deleted
-                ? "삭제했어요 (동기화도 껐습니다)"
-                : "삭제할 파일이 없었어요";
-              infoEl.classList.remove("ytpd-set-ok");
-              toast(r.deleted ? "드라이브에서 삭제했어요" : "삭제할 파일이 없어요");
-            } catch (e) {
-              toast(e.message);
-            }
-          },
-        },
-      ]);
-    });
-
-    // ----- 백업 / 복원 -----
-    $("[data-export]").addEventListener("click", () => {
-      exportBookmarks().catch((e) => toast(e.message));
-    });
-
-    const fileInput = $("[data-importfile]");
-    $("[data-import]").addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", () => {
-      const f = fileInput.files && fileInput.files[0];
-      if (f) importBookmarks(f);
-      fileInput.value = ""; // 같은 파일을 다시 골라도 동작하도록
-    });
-
-    $("[data-close]").addEventListener("click", () => closeModal(back));
-    back.addEventListener("click", (e) => {
-      if (e.target === back) closeModal(back);
-    });
-  }
-
-  function modalChoose(titleText, orderedSecs, vid, onPick) {
-    const back = document.createElement("div");
-    back.className = "ytpd-modal-back";
-    const box = document.createElement("div");
-    box.className = "ytpd-modal";
-    const h = document.createElement("div");
-    h.className = "ytpd-modal-title";
-    h.textContent = titleText;
-    box.appendChild(h);
-    for (const s of orderedSecs) {
-      const opt = document.createElement("button");
-      opt.type = "button";
-      opt.className = "ytpd-modal-opt";
-      opt.textContent = "↦ " + s.label;
-      if (s.anchorVideoId === vid) opt.disabled = true;
-      opt.addEventListener("click", () => {
-        closeModal(back);
-        onPick(s);
-      });
-      box.appendChild(opt);
-    }
-    back.appendChild(box);
-    mountModal(back);
-    back.addEventListener("click", (e) => {
-      if (e.target === back) closeModal(back);
-    });
-  }
-
-  /** 북마크 DOM 생성 (count = 북마크 앞에 있는 영상 수) */
-  function buildDivider(section) {
-    const wrap = document.createElement("div");
-    wrap.className = "ytpd-divider" + (section.id === movingSectionId ? " ytpd-divider-moving" : "");
-    wrap.dataset.anchor = section.anchorVideoId;
-    wrap.dataset.id = section.id;
-
-    const label = document.createElement("span");
-    label.className = "ytpd-divider-label";
-    label.textContent = section.label;
-    label.title = "클릭: 이 북마크를 다른 영상으로 옮기기 (Esc 취소)";
-    label.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (movingSectionId === section.id) exitMoveMode();
-      else enterMoveMode(section.id);
-    });
-
-    const line = document.createElement("span");
-    line.className = "ytpd-divider-line";
-
-    wrap.appendChild(label);
-    wrap.appendChild(line);
-
-    // 이 북마크 바로 밑(섹션 맨 위)에 URL/ID 로 영상 추가
-    const addVideo = document.createElement("button");
-    addVideo.className = "ytpd-add-video";
-    addVideo.type = "button";
-    addVideo.textContent = "＋영상";
-    addVideo.title = "이 북마크 아래(섹션 맨 위)에 URL/ID 로 영상 추가";
-    addVideo.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openAddVideoInput(section);
-    });
-    wrap.appendChild(addVideo);
-
-    // 삭제 버튼 (hover 시 표시)
-    const del = document.createElement("button");
-    del.className = "ytpd-divider-del";
-    del.type = "button";
-    del.textContent = "✕";
-    del.title = "북마크 삭제";
-    del.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      deleteSection(section.id);
-    });
-    wrap.appendChild(del);
-
-    return wrap;
-  }
-
-  // ============================================================================
   // 우측 하단 점프 패널
   // ============================================================================
   function ensurePanel() {
@@ -1307,7 +639,6 @@
         <span class="ytpd-spacer"></span>
         <button class="ytpd-pos" type="button" title="패널 위치 (오른쪽 위 ↔ 오른쪽 아래)">↕</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
-        <button class="ytpd-set" type="button" title="설정 (동기화 · 백업 · 내 구글 API)">⚙</button>
       </div>
       <div class="ytpd-panel-body">
         <div class="ytpd-search">
@@ -1315,11 +646,8 @@
           <div class="ytpd-search-results"></div>
         </div>
         <div class="ytpd-rows"></div>
-      </div>
-      <div class="ytpd-addvideo-footer"></div>`;
+      </div>`;
     document.body.appendChild(panelEl);
-
-    panelEl.querySelector(".ytpd-set").addEventListener("click", openSettings);
 
     panelEl.querySelector(".ytpd-toggle").addEventListener("click", () => {
       panelEl.classList.toggle("ytpd-collapsed");
@@ -1433,7 +761,6 @@
       const editGroup = document.createElement("span");
       editGroup.className = "ytpd-row-group";
       editGroup.appendChild(rowBtn("✎", "이름 바꾸기", () => renameSection(s.id)));
-      editGroup.appendChild(rowBtn("＋", "이 북마크 밑에 영상 추가", () => openAddVideoInput(s)));
       editGroup.appendChild(
         rowBtn("🗑", "북마크 삭제", () => deleteSection(s.id), "ytpd-btn-danger")
       );
@@ -1522,13 +849,48 @@
       }
 
       for (const e of entries) {
+        const row = document.createElement("div");
+        row.className = "ytpd-plhead-row";
+
         const a = document.createElement("a");
         a.className = "ytpd-plhead-item" + (e.isCurrent ? " ytpd-plhead-cur" : "");
         a.href = "https://www.youtube.com/playlist?list=" + encodeURIComponent(e.pid);
         a.textContent = `${e.name} (${e.count})` + (e.isCurrent ? "  · 현재" : "");
         a.title = `${e.name} — 북마크 ${e.count}개\n${e.pid}`;
-        box.appendChild(a);
+        row.appendChild(a);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ytpd-plhead-del";
+        del.textContent = "✕";
+        del.title = "이 재생목록의 북마크를 전부 삭제 (재생목록이 삭제됐거나 더 안 쓸 때)";
+        del.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          modalPick(`"${e.name}" 의 북마크 ${e.count}개를 모두 삭제할까요?`, [
+            {
+              label: "삭제",
+              desc: "되돌릴 수 없어요. 재생목록이 삭제됐거나 더 이상 안 쓰는 경우에 쓰세요.",
+              onPick: () => deletePlaylistBookmarks(e.pid, box),
+            },
+          ]);
+        });
+        row.appendChild(del);
+
+        box.appendChild(row);
       }
+    });
+  }
+
+  /** 특정 재생목록의 북마크 전체를 지운다 (재생목록이 삭제됐거나 더 안 쓸 때). */
+  function deletePlaylistBookmarks(pid, box) {
+    chrome.storage.local.remove(STORAGE_PREFIX + pid, () => {
+      if (pid === playlistId) {
+        data = { sections: [] };
+        searchCorpus = null;
+        render();
+      }
+      fillOtherPlaylists(box);
     });
   }
 
@@ -1563,27 +925,11 @@
   }
 
   /**
-   * 검색 대상 전체 목록을 가장 좋은 소스에서 가져온다 (캐시).
-   * 1) 로그인 상태면 API 최신 전체 목록 → 2) 화면에 로드된 항목(불완전)
+   * 검색 대상 전체 목록을 가져온다 (캐시). 화면에 로드된 항목만 대상이라
+   * 아직 스크롤로 안 불러온 아래쪽은 못 찾을 수 있다.
    */
   async function getSearchCorpus() {
     if (searchCorpus) return searchCorpus;
-
-    if (signedIn) {
-      try {
-        const { items } = await bg("listItems", { playlistId });
-        searchCorpus = items.map((i) => ({
-          videoId: i.videoId,
-          position: i.position,
-          title: i.title || "",
-          channel: i.channel || "",
-          src: "api",
-        }));
-        return searchCorpus;
-      } catch (_) {
-        /* API 실패 시 아래로 폴백 */
-      }
-    }
 
     // 화면에 로드된 항목 (불완전 — lazy load)
     searchCorpus = getVideoItems().map((it, idx) => ({
@@ -1814,303 +1160,6 @@
   }
 
   // ============================================================================
-  // 인증 (자동 로그인) / 영상 추가 / 영상 이동
-  // ============================================================================
-  function bg(action, payload = {}) {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(Object.assign({ action }, payload), (resp) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        if (!resp) {
-          reject(new Error("백그라운드 응답이 없어요"));
-          return;
-        }
-        if (!resp.ok) {
-          reject(new Error(resp.error || "오류가 발생했어요"));
-          return;
-        }
-        resolve(resp.result);
-      });
-    });
-  }
-
-  /** 현재 로그인 상태를 조용히 확인 (UI 표시 없음) */
-  async function refreshAuthState() {
-    try {
-      const res = await bg("getAuthStatus");
-      signedIn = !!res.signedIn;
-    } catch (_) {
-      signedIn = false;
-    }
-  }
-
-  /**
-   * 쓰기 동작(이동/추가) 직전에 호출. 로그인 안 돼 있으면 구글 로그인 창을
-   * 한 번 띄운다(자동 로그인). 성공하면 true.
-   */
-  async function ensureSignedIn() {
-    if (signedIn) return true;
-    try {
-      await bg("signIn"); // 최초 1회 구글 로그인 팝업
-      signedIn = true;
-      searchCorpus = null; // 이제 API 로 전체 목록 검색 가능
-      return true;
-    } catch (err) {
-      toast("구글 로그인이 필요해요: " + err.message);
-      return false;
-    }
-  }
-
-  /** 영상 URL/ID 에서 videoId 추출 */
-  function parseVideoId(input) {
-    input = (input || "").trim();
-    if (!input) return null;
-    if (/^[\w-]{11}$/.test(input)) return input; // 순수 ID
-    try {
-      const u = new URL(input);
-      const v = u.searchParams.get("v");
-      if (v) return v;
-      if (u.hostname.endsWith("youtu.be")) return u.pathname.slice(1).split("/")[0];
-    } catch (_) {}
-    const m = input.match(/[\w-]{11}/);
-    return m ? m[0] : null;
-  }
-
-  /**
-   * "여기에 영상 추가" 입력창 (URL/ID).
-   * 북마크 패널 맨 아래 영역(footer)에 입력칸을 띄운다(전체 폭이라 안 깨짐).
-   */
-  /** 영상 추가 입력칸 닫기 */
-  function closeAddVideoInput() {
-    const footer = panelEl && panelEl.querySelector(".ytpd-addvideo-footer");
-    if (!footer) return;
-    footer.innerHTML = "";
-    footer.classList.remove("ytpd-open");
-    delete footer.dataset.sectionId;
-  }
-
-  function openAddVideoInput(section) {
-    ensurePanel();
-    const footer = panelEl.querySelector(".ytpd-addvideo-footer");
-
-    // 같은 북마크의 ＋ 를 다시 누르면 닫는다 (토글)
-    if (footer.classList.contains("ytpd-open") && footer.dataset.sectionId === section.id) {
-      closeAddVideoInput();
-      return;
-    }
-
-    // 접혀 있으면 펼친다
-    panelEl.classList.remove("ytpd-collapsed");
-    const toggle = panelEl.querySelector(".ytpd-toggle");
-    if (toggle) toggle.textContent = "▲";
-
-    footer.innerHTML = "";
-    footer.dataset.sectionId = section.id;
-
-    const title = document.createElement("div");
-    title.className = "ytpd-addvideo-title";
-    const titleText = document.createElement("span");
-    titleText.textContent = `"${section.label}" 밑에 영상 추가`;
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "ytpd-addvideo-close";
-    closeBtn.textContent = "✕";
-    closeBtn.title = "닫기";
-    closeBtn.addEventListener("click", closeAddVideoInput);
-    title.appendChild(titleText);
-    title.appendChild(closeBtn);
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "ytpd-addvideo-input";
-    input.placeholder = "영상 URL 또는 ID (Enter=추가, Esc=취소)";
-
-    footer.appendChild(title);
-    footer.appendChild(input);
-    footer.classList.add("ytpd-open");
-    input.focus();
-
-    const close = closeAddVideoInput;
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const videoId = parseVideoId(input.value);
-        if (!videoId) {
-          toast("영상 URL/ID를 인식하지 못했어요");
-          return;
-        }
-        close();
-        await insertVideoAtSection(section, videoId);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-      }
-    });
-  }
-
-  // 외부 진입점: 직렬 큐에 넣어 순서를 보장한다.
-  function insertVideoAtSection(section, videoId) {
-    return runSerial(() => doInsertVideoAtSection(section, videoId));
-  }
-
-  /** URL/ID 로 받은 새 영상을 기준(앵커/직전 영상) 바로 뒤에 추가 */
-  async function doInsertVideoAtSection(section, videoId) {
-    section = getSection(section.id) || section;
-    if (!(await ensureSignedIn())) return;
-    toast("영상을 추가하는 중…");
-    try {
-      // 기준(앵커 또는 직전에 보낸 영상)의 현재 position 바로 뒤(+1)에 삽입.
-      // 항상 API 최신값이라 연속 추가에도 보낸 순서대로 쌓인다.
-      const r = await getReferencePos(section);
-      const position = r == null ? undefined : r + 1;
-      await bg("insertAt", { playlistId, videoId, position });
-
-      lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
-      searchCorpus = null;
-      toast("영상을 추가했어요 (새로고침하면 북마크 밑에 보여요)");
-      scheduleRender();
-    } catch (err) {
-      toast(err.message);
-    }
-  }
-
-  /**
-   * 재생목록에 "이미 있는" 영상(videoId)을 북마크(section) 바로 밑으로 이동.
-   * - API 로 전체 목록을 받아 옮길 영상/앵커의 정확한 position·playlistItemId 를 구한다.
-   * - 앵커 바로 앞 자리로 이동시킨다(제거→삽입 모델 기준 목표 위치 계산).
-   * - 북마크가 섹션 맨 위에 머물도록 앵커를 옮긴 영상으로 갱신한다.
-   */
-  // 쓰기 작업 직렬 처리 큐 — 첫 작업이 끝나기 전에 다음을 눌러도, 클릭 순서대로
-  // 하나씩 처리되어 경쟁(레이스)으로 순서가 꼬이는 걸 막는다.
-  let opChain = Promise.resolve();
-  function runSerial(task) {
-    const next = opChain.then(task, task);
-    opChain = next.catch(() => {});
-    return next;
-  }
-
-  // 섹션별 "마지막으로 보낸 영상" — 다음 영상을 그 바로 뒤에 놓아 보낸 순서를 유지한다.
-  // (페이지 새로고침/이동 시 init 에서 초기화)
-  let lastPlacedBySection = {};
-
-  /**
-   * 새 영상을 놓을 "기준 영상"의 현재 position 을 구한다.
-   * 기준 = 이 섹션에 직전에 보낸 영상(있으면) → 없으면 북마크 기준(앵커) 영상.
-   * 항상 API 로 최신값을 받아 연속 작업에도 정확하다.
-   * @returns {Promise<number|null>}
-   */
-  async function getReferencePos(section) {
-    const lastVid = lastPlacedBySection[section.id];
-    if (lastVid && lastVid !== section.anchorVideoId) {
-      const list = (await bg("findItems", { playlistId, videoId: lastVid })).items;
-      if (list.length) return list[list.length - 1].position; // 가장 아래(최근) 것
-    }
-    const anchorList = (await bg("findItems", { playlistId, videoId: section.anchorVideoId })).items;
-    return anchorList.length ? anchorList[0].position : null;
-  }
-
-  /**
-   * 옮긴 영상을 화면(유튜브 목록)에서도 기준 영상 바로 뒤로 이동시킨다.
-   * 기준 영상이 아직 로딩 안 된 경우(북마크가 멀리 있음) "점프"와 같은 방식
-   * (ensureLoaded — 스크롤하며 찾기)으로 한 번 로딩을 시도한 뒤 반영한다.
-   * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다
-   * (예전 같은 렉/무한로딩 없음).
-   * @returns 반영했으면 true
-   */
-  async function reflectMoveInDOM(movingVid, refVid) {
-    const movingNode = findItemByVideoId(movingVid);
-    if (!movingNode) return false;
-    let refNode = findItemByVideoId(refVid);
-    if (!refNode) {
-      toast("화면에 반영하는 중… (기준 영상 로딩)");
-      refNode = await ensureLoaded(refVid);
-    }
-    if (!refNode || movingNode === refNode) return false;
-    if (refNode.nextElementSibling !== movingNode) {
-      refNode.after(movingNode); // 기준 바로 뒤로
-    }
-    flashItem(movingNode);
-    return true;
-  }
-
-  // 외부에서 부르는 진입점: 직렬 큐에 넣어 순서를 보장한다.
-  function moveVideoToSection(videoId, section, domPos) {
-    return runSerial(() => doMoveVideoToSection(videoId, section, domPos));
-  }
-
-  async function doMoveVideoToSection(videoId, section, domPos) {
-    // 최신 섹션 참조 (메뉴를 띄운 뒤 데이터가 바뀌었을 수 있어 id로 다시 찾는다)
-    section = getSection(section.id) || section;
-
-    if (videoId === section.anchorVideoId) {
-      toast("이 영상은 이 북마크의 기준 영상이에요");
-      return;
-    }
-    if (!(await ensureSignedIn())) return;
-
-    toast("영상을 옮기는 중…");
-    try {
-      // 옮길 영상의 playlistItemId·position — videoId 필터로 그 영상만 조회(빠름).
-      const movingList = (await bg("findItems", { playlistId, videoId })).items;
-      if (!movingList.length) {
-        toast("옮길 영상을 목록에서 찾지 못했어요");
-        return;
-      }
-      // 같은 영상이 여러 번 들어있으면 클릭한 DOM 위치에 가장 가까운 것을 고른다.
-      let moving = movingList[0];
-      if (movingList.length > 1 && domPos != null) {
-        moving = movingList.reduce(
-          (best, it) =>
-            Math.abs((it.position ?? 0) - domPos) < Math.abs((best.position ?? 0) - domPos) ? it : best,
-          movingList[0]
-        );
-      }
-
-      // 기준(앵커 또는 직전에 보낸 영상)의 현재 position — 그 "바로 뒤"에 놓는다.
-      const r = await getReferencePos(section);
-      if (r == null) {
-        toast("북마크의 기준 영상을 목록에서 찾지 못했어요");
-        return;
-      }
-
-      const a = moving.position; // 옮길 영상의 현재 위치
-      // 기준 바로 뒤에 놓는다. 항목을 빼면 그 아래가 한 칸 당겨지므로,
-      // 위에서 내려올 때(a<r)는 r, 아래에서 올라올 때(a>r)는 r+1 이 목표.
-      const target = a < r ? r : r + 1;
-
-      // 화면에서 이 영상을 붙일 기준(직전에 보낸 영상 → 없으면 앵커).
-      // lastPlaced 를 갱신하기 "전" 값을 써야 방금 옮긴 것 바로 뒤에 쌓인다.
-      const domRefVid =
-        lastPlacedBySection[section.id] && lastPlacedBySection[section.id] !== section.anchorVideoId
-          ? lastPlacedBySection[section.id]
-          : section.anchorVideoId;
-
-      await bg("moveItem", {
-        playlistItemId: moving.playlistItemId,
-        playlistId,
-        videoId,
-        position: target,
-      });
-
-      lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
-      searchCorpus = null;
-      // 새로고침 없이 화면에도 바로 반영. 기준 영상이 아직 로딩 안 됐으면
-      // 점프처럼 스크롤하며 찾은 뒤 반영한다(오래 걸릴 수 있음).
-      const reflected = await reflectMoveInDOM(videoId, domRefVid);
-      toast(
-        reflected
-          ? `"${section.label}" 밑으로 옮겼어요`
-          : `"${section.label}" 밑으로 옮겼어요 (화면 반영에 실패해 새로고침이 필요해요)`
-      );
-      scheduleRender();
-    } catch (err) {
-      toast(err.message);
-    }
-  }
-
-  // ============================================================================
   // 토스트
   // ============================================================================
   let toastTimer = null;
@@ -2193,9 +1242,7 @@
       chrome.storage.local.get(["ytpd:secOpen"], (res) => r(res["ytpd:secOpen"] !== false))
     );
     searchCorpus = null;
-    lastPlacedBySection = {};
     await loadSections();
-    await refreshAuthState();
 
     // 컨테이너가 아직 없을 수 있으니 잠깐 기다렸다 옵저버 부착 + 첫 렌더
     let waited = 0;
@@ -2210,13 +1257,6 @@
     // 재생목록 제목 캐시 보정. 유튜브 헤더가 늦게 그려질 수 있어 한 번 더 확인한다.
     backfillTitle();
     setTimeout(backfillTitle, 1500);
-
-    // 동기화가 켜져 있으면 다른 PC 의 변경을 한 번만 조용히 당겨온다.
-    // 네트워크 호출 1회뿐이고 유튜브 페이지는 건드리지 않는다.
-    await loadSyncFlag();
-    if (syncOn && signedIn) {
-      pullFromDrive().catch(() => {});
-    }
   }
 
   // 팝업에서 켜기/끄기 → 실시간 반영 (새로고침 불필요)

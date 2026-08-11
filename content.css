@@ -110,22 +110,6 @@ body.ytpd-move-mode .ytpd-tool-here {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.ytpd-modal-text {
-  width: 100%;
-  box-sizing: border-box;
-  height: 260px;
-  padding: 8px 10px;
-  font-family: ui-monospace, Consolas, "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--ytpd-text);
-  background: #111;
-  border: 1px solid var(--ytpd-border);
-  border-radius: 8px;
-  outline: none;
-  resize: vertical;
-  white-space: pre;
-}
 .ytpd-modal-opt-desc {
   margin-top: 4px;
   font-size: 11.5px;
@@ -244,102 +228,6 @@ body.ytpd-move-mode .ytpd-tool-here {
   color: var(--ytpd-text-dim);
 }
 
-/* 구분선의 영상 추가 / 삭제 버튼: hover 시 표시 */
-.ytpd-divider .ytpd-add-video,
-.ytpd-divider .ytpd-divider-del {
-  flex: 0 0 auto;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-  cursor: pointer;
-  border-radius: 6px;
-  line-height: 1.4;
-}
-.ytpd-divider:hover .ytpd-add-video,
-.ytpd-divider:hover .ytpd-divider-del {
-  opacity: 1;
-}
-.ytpd-divider .ytpd-add-video {
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ytpd-amber);
-  background: transparent;
-  border: 1px solid var(--ytpd-amber-dim);
-}
-.ytpd-divider .ytpd-add-video:hover:not(:disabled) {
-  background: var(--ytpd-amber);
-  color: #1c1c1e;
-}
-.ytpd-divider .ytpd-add-video:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  border-color: var(--ytpd-border);
-  color: var(--ytpd-text-dim);
-}
-.ytpd-divider .ytpd-divider-del {
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
-  color: var(--ytpd-text-dim);
-  background: transparent;
-  border: 1px solid var(--ytpd-border);
-}
-.ytpd-divider .ytpd-divider-del:hover {
-  color: #ff6b6b;
-  border-color: #ff6b6b;
-}
-/* 영상 추가 입력 — 구분선 패널 맨 아래 영역 (평소엔 숨김) */
-.ytpd-addvideo-footer {
-  display: none;
-  flex: 0 0 auto;
-  padding: 8px;
-  border-top: 1px solid var(--ytpd-border);
-}
-.ytpd-addvideo-footer.ytpd-open {
-  display: block;
-}
-.ytpd-addvideo-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ytpd-amber);
-  margin-bottom: 6px;
-}
-.ytpd-addvideo-title > span {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ytpd-addvideo-close {
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-  background: transparent;
-  border: 1px solid var(--ytpd-border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.ytpd-addvideo-close:hover {
-  color: var(--ytpd-amber);
-  border-color: var(--ytpd-amber-dim);
-}
-.ytpd-addvideo-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  font-size: 13px;
-  color: var(--ytpd-text);
-  background: #111;
-  border: 1px solid var(--ytpd-amber-dim);
-  border-radius: 6px;
-  outline: none;
-}
-
 /* ---------- 점프 플래시 애니메이션 --------------------------------------- */
 /* 점프한 영상 강조 — 도착할 때까지 남아 있어야 하므로 사라지지 않는 표시.
    (애니메이션을 계속 돌리지 않아 무거워지지 않는다) */
@@ -406,113 +294,12 @@ body.ytpd-move-mode .ytpd-tool-here {
   background: var(--ytpd-amber);
   border-color: var(--ytpd-amber);
 }
-/* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
-.ytpd-panel-head .ytpd-set {
-  font-size: 15px;
-}
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
 }
 .ytpd-panel-head button:hover {
   border-color: var(--ytpd-amber-dim);
 }
-.ytpd-panel-head .ytpd-auth.ytpd-signed {
-  color: var(--ytpd-amber);
-  border-color: var(--ytpd-amber-dim);
-}
-
-/* ---------- 설정 모달 ------------------------------------------------------ */
-.ytpd-modal.ytpd-modal-wide {
-  width: 420px;
-}
-.ytpd-set-sec {
-  padding: 12px 0;
-  border-top: 1px solid var(--ytpd-border);
-}
-.ytpd-set-sec:first-of-type {
-  border-top: none;
-}
-.ytpd-set-h {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ytpd-amber);
-  margin-bottom: 6px;
-}
-.ytpd-set-desc {
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--ytpd-text-dim);
-  margin-bottom: 10px;
-}
-.ytpd-set-label {
-  font-size: 12px;
-  color: var(--ytpd-text-dim);
-  margin: 8px 0 4px;
-}
-.ytpd-set-status {
-  font-size: 12.5px;
-  color: var(--ytpd-text-dim);
-  margin-bottom: 8px;
-}
-.ytpd-set-status.ytpd-set-ok {
-  color: var(--ytpd-amber);
-}
-.ytpd-set-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 8px;
-}
-.ytpd-set-row .ytpd-modal-input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.ytpd-set-btn {
-  flex: 0 0 auto;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ytpd-text);
-  background: var(--ytpd-bg-soft);
-  border: 1px solid var(--ytpd-border);
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ytpd-set-btn:hover {
-  color: var(--ytpd-amber);
-  border-color: var(--ytpd-amber-dim);
-  background: rgba(240, 179, 42, 0.1);
-}
-.ytpd-set-btn.ytpd-set-danger {
-  color: #e88;
-  border-color: rgba(224, 87, 79, 0.45);
-}
-.ytpd-set-btn.ytpd-set-danger:hover {
-  background: #e0574f;
-  border-color: #e0574f;
-  color: #fff;
-}
-.ytpd-set-link {
-  display: inline-block;
-  text-decoration: none;
-  line-height: 1.6;
-}
-.ytpd-set-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  font-size: 13px;
-  color: var(--ytpd-text);
-  cursor: pointer;
-}
-.ytpd-set-foot {
-  justify-content: flex-end;
-  border-top: 1px solid var(--ytpd-border);
-  padding-top: 12px;
-}
-
 .ytpd-panel-body {
   overflow-y: auto;
   padding: 6px;
@@ -605,6 +392,34 @@ body.ytpd-move-mode .ytpd-tool-here {
 .ytpd-plhead-none {
   padding: 4px 6px;
   opacity: 0.7;
+}
+.ytpd-plhead-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ytpd-plhead-row .ytpd-plhead-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ytpd-plhead-del {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ytpd-text-dim);
+  background: transparent;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ytpd-plhead-del:hover {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
 }
 
 /* ---------- 북마크 목록 접기/펼치기 머리 --------------------------------- */

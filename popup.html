@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 230px;
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1c1c1e;
+      color: #e8e8ea;
+    }
+    .wrap { padding: 14px 16px; }
+    .title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f0b32a;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .label { font-size: 13px; }
+    .switch { position: relative; width: 44px; height: 24px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: #555;
+      border-radius: 999px;
+      transition: 0.15s;
+      cursor: pointer;
+    }
+    .slider::before {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.15s;
+    }
+    input:checked + .slider { background: #f0b32a; }
+    input:checked + .slider::before { transform: translateX(20px); }
+    .hint {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #9aa0a6;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">유튜브 재생목록 북마크</div>
+    <div class="row">
+      <span class="label">사용</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -2,18 +2,24 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq2OJoKOABApTQnRKM66S1vMrmJivQjgtZu05kOBvjsrCZtDnkEYg0xiAo4Hdc23zGMhCZU9HjVw8UjEUaCKXUaHRq0RpM4tSO99gDNymGTRCchrNgdz1Z7VTEfIKKcONdUV9ZZi6kzCcDhyUhikxVu/n2w8aEOqigPf9xuqlsIpC04ysRd1u6MGniMB5OHP091lI637pVKaQc0pfFLUdmr2PlT/DYDVUYHVWKkkhaz9LZeMjvtorLCKXBCdYltYGzQr+ddjpdfVw767RDZ11eCfpkEfkdF0rwNPy2gq3SyMilucFprdbItXyH6ll4IzvZVx34aD6qpeAxKYwULCAnQIDAQAB",
   "name": "유튜브 재생목록 북마크",
-  "version": "4.0.0",
-  "description": "YouTube 재생목록에 북마크를 넣어 클릭 점프. 이름 변경·검색·한 칸 이동·다른 영상으로 재배치 지원. 전부 로컬 저장, 구글 로그인 없음.",
+  "version": "4.1.0",
+  "description": "YouTube 재생목록에 북마크를 넣어 클릭 점프. 영상을 북마크 밑으로 이동, 이름 변경·검색·한 칸 이동·다른 영상으로 재배치 지원.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "유튜브 재생목록 북마크 (켜기/끄기)"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "identity"
   ],
   "host_permissions": [
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [

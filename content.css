@@ -297,6 +297,10 @@ body.ytpd-move-mode .ytpd-tool-here {
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
 }
+/* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
+.ytpd-panel-head .ytpd-set {
+  font-size: 15px;
+}
 .ytpd-panel-head button:hover {
   border-color: var(--ytpd-amber-dim);
 }
@@ -304,6 +308,63 @@ body.ytpd-move-mode .ytpd-tool-here {
   overflow-y: auto;
   padding: 6px;
   min-height: 0;
+}
+
+/* ---------- 최소 설정 모달 (구글 로그인 — "↦북마크" 전용) ------------------- */
+.ytpd-modal.ytpd-modal-wide {
+  width: 420px;
+}
+.ytpd-set-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ytpd-text-dim);
+  margin-bottom: 10px;
+}
+.ytpd-set-label {
+  font-size: 12px;
+  color: var(--ytpd-text-dim);
+  margin: 8px 0 4px;
+}
+.ytpd-set-status {
+  font-size: 12.5px;
+  color: var(--ytpd-text-dim);
+  margin-bottom: 8px;
+}
+.ytpd-set-status.ytpd-set-ok {
+  color: var(--ytpd-amber);
+}
+.ytpd-set-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.ytpd-set-row .ytpd-modal-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ytpd-set-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ytpd-text);
+  background: var(--ytpd-bg-soft);
+  border: 1px solid var(--ytpd-border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ytpd-set-btn:hover {
+  color: var(--ytpd-amber);
+  border-color: var(--ytpd-amber-dim);
+  background: rgba(240, 179, 42, 0.1);
+}
+.ytpd-set-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--ytpd-border);
+  padding-top: 12px;
+  margin-top: 12px;
 }
 #ytpd-panel.ytpd-collapsed .ytpd-panel-body {
   display: none;

@@ -1198,14 +1198,17 @@
    * 사라져 버린다. 그래서 사라지지 않는 강조를 걸고 충분히 오래 유지한다.
    * (다음 점프 때 이전 강조는 자동으로 지워진다)
    */
-  function flashItem(item) {
+  function flashItem(item, smooth = true) {
     clearFlash();
     // 북마크는 앵커 영상 아래(다음 형제)에 있다.
     const divider = item.nextElementSibling?.classList?.contains("ytpd-divider")
       ? item.nextElementSibling
       : null;
     const target = divider || item;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    // smooth 스크롤은 애니메이션 내내 매 프레임 긴 목록을 다시 그려야 해서,
+    // 방금 DOM 을 건드린 직후(영상 이동)에 쓰면 눈에 띄게 멈칫거린다.
+    // 그런 경우는 즉시 이동(instant)으로 그 비용을 없앤다.
+    target.scrollIntoView({ behavior: smooth ? "smooth" : "instant", block: "center" });
 
     item.classList.add("ytpd-flash");
     flashedEls.push(item);
@@ -1304,6 +1307,12 @@
       </div>
       <div class="ytpd-set-label">OAuth 클라이언트 ID</div>
       <input class="ytpd-modal-input" data-clientid placeholder="000000-xxxx.apps.googleusercontent.com">
+      <div class="ytpd-set-label">
+        OAuth 클라이언트 보안 비밀번호(secret) — 선택. 넣으면 PC를 껐다 켜도
+        로그인이 계속 유지됩니다(refresh token). 비워두면 지금처럼 1시간마다
+        조용히 갱신을 시도하고, 가끔 로그인 창이 다시 뜰 수 있어요.
+      </div>
+      <input class="ytpd-modal-input" data-clientsecret type="password" placeholder="선택 — 비워두면 기존 방식 그대로">
       <div class="ytpd-set-row">
         <button type="button" class="ytpd-set-btn" data-savekey>저장</button>
       </div>
@@ -1323,8 +1332,9 @@
 
     await refreshAuthState();
     paintAuth();
-    chrome.storage.local.get(["ytpd:clientId"], (res) => {
+    chrome.storage.local.get(["ytpd:clientId", "ytpd:clientSecret"], (res) => {
       $("[data-clientid]").value = res["ytpd:clientId"] || "";
+      $("[data-clientsecret]").value = res["ytpd:clientSecret"] || "";
     });
     bg("getRedirectUri")
       .then((r) => ($("[data-redirect]").value = r.uri))
@@ -1360,10 +1370,23 @@
       );
     });
 
-    $("[data-savekey]").addEventListener("click", () => {
-      const v = $("[data-clientid]").value.trim();
-      chrome.storage.local.set({ "ytpd:clientId": v }, () => {
-        toast(v ? "저장했어요. 다음 로그인부터 적용됩니다" : "지웠어요");
+    $("[data-savekey]").addEventListener("click", async () => {
+      const id = $("[data-clientid]").value.trim();
+      const secret = $("[data-clientsecret]").value.trim();
+      const prev = await new Promise((r) =>
+        chrome.storage.local.get(["ytpd:clientId", "ytpd:clientSecret"], r)
+      );
+      const changed = prev["ytpd:clientId"] !== id || prev["ytpd:clientSecret"] !== secret;
+      chrome.storage.local.set({ "ytpd:clientId": id, "ytpd:clientSecret": secret }, async () => {
+        if (changed) {
+          // 설정이 바뀌면 예전 방식으로 캐시된 토큰이 새 방식과 안 맞을 수 있어 정리한다.
+          try {
+            await bg("signOut");
+          } catch (_) {}
+          signedIn = false;
+          paintAuth();
+        }
+        toast(id ? "저장했어요. 다시 로그인해 주세요" : "지웠어요");
       });
     });
 
@@ -1404,25 +1427,24 @@
 
   /**
    * 옮긴 영상을 화면(유튜브 목록)에서도 기준 영상 바로 뒤로 이동시킨다.
-   * 기준 영상이 아직 로딩 안 된 경우(북마크가 멀리 있음) "점프"와 같은 방식
-   * (ensureLoaded — 스크롤하며 찾기)으로 한 번 로딩을 시도한 뒤 반영한다.
+   * 두 영상이 모두 이미 로드돼 있을 때만 동작한다. 기준 영상이 아직 안 로드됐다고
+   * 해서 "점프"처럼 스크롤하며 억지로 로딩하지는 않는다 — 그러면 유튜브가 그 사이
+   * 구간의 영상 수백~수천 개를 한꺼번에 더 렌더링하게 되어, 그 뒤로는 이동 버튼을
+   * 안 써도 재생목록을 볼 때마다 느려진다(유튜브 목록은 한 번 로드하면 다시
+   * 비우지 않기 때문). 그래서 못 찾으면 그냥 포기하고 새로고침을 안내한다.
    * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다
    * (예전 같은 렉/무한로딩 없음).
    * @returns 반영했으면 true
    */
-  async function reflectMoveInDOM(movingVid, refVid) {
+  function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
-    if (!movingNode) return false;
-    let refNode = findItemByVideoId(refVid);
-    if (!refNode) {
-      toast("화면에 반영하는 중… (기준 영상 로딩)");
-      refNode = await ensureLoaded(refVid);
-    }
-    if (!refNode || movingNode === refNode) return false;
+    const refNode = findItemByVideoId(refVid);
+    if (!movingNode || !refNode || movingNode === refNode) return false;
     if (refNode.nextElementSibling !== movingNode) {
       refNode.after(movingNode); // 기준 바로 뒤로
     }
-    flashItem(movingNode);
+    // DOM 을 막 건드린 직후라 smooth 스크롤은 무겁다(아래 flashItem 참고) — 즉시 이동.
+    flashItem(movingNode, false);
     return true;
   }
 
@@ -1487,13 +1509,12 @@
 
       lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
       searchCorpus = null;
-      // 새로고침 없이 화면에도 바로 반영. 기준 영상이 아직 로딩 안 됐으면
-      // 점프처럼 스크롤하며 찾은 뒤 반영한다(오래 걸릴 수 있음).
-      const reflected = await reflectMoveInDOM(videoId, domRefVid);
+      // 새로고침 없이 화면에도 바로 반영 (로드된 항목이면 DOM 에서 자리 이동).
+      const reflected = reflectMoveInDOM(videoId, domRefVid);
       toast(
         reflected
           ? `"${section.label}" 밑으로 옮겼어요`
-          : `"${section.label}" 밑으로 옮겼어요 (화면 반영에 실패해 새로고침이 필요해요)`
+          : `"${section.label}" 밑으로 옮겼어요 (멀리 있어 화면 반영은 새로고침 후)`
       );
       scheduleRender();
     } catch (err) {

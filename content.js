@@ -1141,9 +1141,14 @@
   /**
    * 특정 영상이 로드될 때까지 페이지 하단으로 스크롤하며 기다린다.
    * 로딩이 잠깐 멈춰도(네트워크 지연) 쉽게 포기하지 않도록 넉넉히 버틴다.
+   * @param {string} videoId
+   * @param {number} maxTries  최대 스크롤 시도 횟수 (기본 200 = 끝까지).
+   *   "영상 이동" 반영처럼 정말 먼 곳까지는 로딩하고 싶지 않은 경우 작게 준다
+   *   (유튜브는 한 번 로드한 항목을 다시 비우지 않아서, 너무 크게 로딩하면
+   *   그 뒤로 재생목록을 볼 때마다 계속 무거워진다).
    * @returns 로드된 DOM 항목 또는 null
    */
-  async function ensureLoaded(videoId) {
+  async function ensureLoaded(videoId, maxTries = 200) {
     let item = findItemByVideoId(videoId);
     if (item) return item;
 
@@ -1151,9 +1156,9 @@
     try {
       let lastCount = -1;
       let stagnant = 0;
-      // 최대 시도 200회 + "여러 번 연속으로 더 안 불려올 때"만 끝으로 판단.
+      // "여러 번 연속으로 더 안 불려올 때"만 끝으로 판단.
       // (예전엔 3번=0.8초만 멈춰도 포기해서, 로딩이 살짝 끊기면 못 찾는다고 떴다)
-      for (let tries = 0; tries < 200; tries++) {
+      for (let tries = 0; tries < maxTries; tries++) {
         window.scrollTo(0, document.documentElement.scrollHeight);
         await sleep(260);
 
@@ -1425,21 +1430,30 @@
     return anchorList.length ? anchorList[0].position : null;
   }
 
+  // 화면 반영용 보충 로딩은 이 정도로만 제한한다("점프"의 최대 200회와 대조).
+  // 기준 영상이 "조금만 더 스크롤하면 있는" 흔한 경우(같은 구간에서 영상을 연달아
+  // 보낼 때, 방금 보낸 영상이 바로 다음 배치에 있는 경우 등)는 잡아내면서도,
+  // 완전히 먼 곳까지 스크롤해 유튜브가 그 사이 수백~수천 개를 한꺼번에 렌더링하게
+  // 만드는 건 피한다 — 유튜브는 한 번 로드한 항목을 다시 비우지 않아서, 그렇게
+  // 크게 로딩해버리면 그 뒤로는 이동 버튼을 안 써도 재생목록을 볼 때마다 느려진다.
+  const MOVE_REFLECT_MAX_TRIES = 15; // 약 4초, 최대 몇백 개 정도만 추가 로딩
+
   /**
    * 옮긴 영상을 화면(유튜브 목록)에서도 기준 영상 바로 뒤로 이동시킨다.
-   * 두 영상이 모두 이미 로드돼 있을 때만 동작한다. 기준 영상이 아직 안 로드됐다고
-   * 해서 "점프"처럼 스크롤하며 억지로 로딩하지는 않는다 — 그러면 유튜브가 그 사이
-   * 구간의 영상 수백~수천 개를 한꺼번에 더 렌더링하게 되어, 그 뒤로는 이동 버튼을
-   * 안 써도 재생목록을 볼 때마다 느려진다(유튜브 목록은 한 번 로드하면 다시
-   * 비우지 않기 때문). 그래서 못 찾으면 그냥 포기하고 새로고침을 안내한다.
-   * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다
-   * (예전 같은 렉/무한로딩 없음).
+   * 기준 영상이 안 보이면 위 제한 안에서만 "점프"와 같은 방식으로 살짝 더
+   * 로딩해 본다. 그래도 안 보이면(정말 멀리 있으면) 포기하고 새로고침을 안내한다
+   * — 무제한으로 스크롤하지는 않는다(성능 설계 원칙).
+   * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다.
    * @returns 반영했으면 true
    */
-  function reflectMoveInDOM(movingVid, refVid) {
+  async function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
-    const refNode = findItemByVideoId(refVid);
-    if (!movingNode || !refNode || movingNode === refNode) return false;
+    if (!movingNode) return false;
+    let refNode = findItemByVideoId(refVid);
+    if (!refNode) {
+      refNode = await ensureLoaded(refVid, MOVE_REFLECT_MAX_TRIES);
+    }
+    if (!refNode || movingNode === refNode) return false;
     if (refNode.nextElementSibling !== movingNode) {
       refNode.after(movingNode); // 기준 바로 뒤로
     }
@@ -1509,8 +1523,9 @@
 
       lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
       searchCorpus = null;
-      // 새로고침 없이 화면에도 바로 반영 (로드된 항목이면 DOM 에서 자리 이동).
-      const reflected = reflectMoveInDOM(videoId, domRefVid);
+      // 새로고침 없이 화면에도 바로 반영 (로드된 항목이면 DOM 에서 자리 이동,
+      // 살짝 안 보이는 정도면 제한된 범위 안에서 보충 로딩).
+      const reflected = await reflectMoveInDOM(videoId, domRefVid);
       toast(
         reflected
           ? `"${section.label}" 밑으로 옮겼어요`

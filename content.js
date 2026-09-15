@@ -111,9 +111,16 @@
     return "재생목록 " + String(pid || "").slice(0, 8) + "…";
   }
 
-  /** 현재 DOM에 로드된 영상 항목들 */
+  /**
+   * 현재 DOM에 로드된 영상 항목들.
+   * "↦북마크"로 안 보이는 곳으로 보내져 숨겨 둔 항목(.ytpd-hidden)은 제외한다 —
+   * 그 영상은 논리적으로 이미 그 자리에 없고, 나중에 그 구간이 로드되면 유튜브가
+   * 새 위치에 다시 그린다(아래 reflectMoveInDOM 참고).
+   */
   function getVideoItems() {
-    return Array.from(document.querySelectorAll("ytd-playlist-video-renderer"));
+    return Array.from(
+      document.querySelectorAll("ytd-playlist-video-renderer:not(.ytpd-hidden)")
+    );
   }
 
   /**
@@ -122,7 +129,10 @@
    * 매 렌더마다 882개 항목에 new URL() 파싱을 반복하던 비용을 없앤다.
    * (못 찾았을 때는 캐시하지 않아, 아직 로딩 중인 항목은 다음에 다시 시도)
    */
-  const vidCache = new WeakMap(); // 항목 → videoId (DOM 에 쓰지 않고 메모리에 캐시)
+  // 항목 → videoId (DOM 에 쓰지 않고 메모리에 캐시). 페이지(재생목록)를 옮길 때
+  // init() 에서 새로 만든다 — 유튜브가 SPA 이동 시 항목 엘리먼트를 재사용하면
+  // 예전 재생목록의 ID 가 남아 엉뚱한 항목을 옮기게 되는 걸 막는다.
+  let vidCache = new WeakMap();
   function getVideoId(item) {
     const cached = vidCache.get(item);
     if (cached) return cached;
@@ -1143,9 +1153,9 @@
    * 로딩이 잠깐 멈춰도(네트워크 지연) 쉽게 포기하지 않도록 넉넉히 버틴다.
    * @param {string} videoId
    * @param {number} maxTries  최대 스크롤 시도 횟수 (기본 200 = 끝까지).
-   *   "영상 이동" 반영처럼 정말 먼 곳까지는 로딩하고 싶지 않은 경우 작게 준다
-   *   (유튜브는 한 번 로드한 항목을 다시 비우지 않아서, 너무 크게 로딩하면
-   *   그 뒤로 재생목록을 볼 때마다 계속 무거워진다).
+   *   사용자가 직접 지목한 "점프"·▲▼ 에서만 쓴다. "↦북마크" 반영에는 쓰지 않는다 —
+   *   유튜브는 한 번 로드한 항목을 다시 비우지 않아서, 이동할 때마다 로딩하면
+   *   그 뒤로 재생목록을 볼 때마다 계속 무거워진다(reflectMoveInDOM 참고).
    * @returns 로드된 DOM 항목 또는 null
    */
   async function ensureLoaded(videoId, maxTries = 200) {
@@ -1430,36 +1440,55 @@
     return anchorList.length ? anchorList[0].position : null;
   }
 
-  // 화면 반영용 보충 로딩은 이 정도로만 제한한다("점프"의 최대 200회와 대조).
-  // 기준 영상이 "조금만 더 스크롤하면 있는" 흔한 경우(같은 구간에서 영상을 연달아
-  // 보낼 때, 방금 보낸 영상이 바로 다음 배치에 있는 경우 등)는 잡아내면서도,
-  // 완전히 먼 곳까지 스크롤해 유튜브가 그 사이 수백~수천 개를 한꺼번에 렌더링하게
-  // 만드는 건 피한다 — 유튜브는 한 번 로드한 항목을 다시 비우지 않아서, 그렇게
-  // 크게 로딩해버리면 그 뒤로는 이동 버튼을 안 써도 재생목록을 볼 때마다 느려진다.
-  const MOVE_REFLECT_MAX_TRIES = 15; // 약 4초, 최대 몇백 개 정도만 추가 로딩
+  // "↦북마크"로 아직 로드 안 된 곳으로 보낸 영상의 원래 노드들 (숨김 처리한 것).
+  // 페이지 이동/새로고침 시 init 에서 되돌린다.
+  let hiddenEls = [];
+
+  function hideMovedItem(node) {
+    node.classList.add("ytpd-hidden");
+    hiddenEls.push(node);
+    if (hoverItem === node) {
+      hoverItem = null;
+      if (toolbarEl) toolbarEl.style.display = "none";
+    }
+  }
+
+  function unhideAll() {
+    for (const el of hiddenEls) el.classList.remove("ytpd-hidden");
+    hiddenEls = [];
+  }
 
   /**
-   * 옮긴 영상을 화면(유튜브 목록)에서도 기준 영상 바로 뒤로 이동시킨다.
-   * 기준 영상이 안 보이면 위 제한 안에서만 "점프"와 같은 방식으로 살짝 더
-   * 로딩해 본다. 그래도 안 보이면(정말 멀리 있으면) 포기하고 새로고침을 안내한다
-   * — 무제한으로 스크롤하지는 않는다(성능 설계 원칙).
+   * 옮긴 영상을 화면(유튜브 목록)에도 반영한다.
+   *
+   * - 기준 영상이 이미 화면에 로드돼 있으면: 옮긴 영상 노드를 기준 바로 뒤로 옮긴다.
+   *   (둘 다 로드된 구간 안에서의 이동이라, 아래쪽을 더 불러와도 겹치지 않는다)
+   * - 기준 영상이 아직 로드 안 됐으면: 옮긴 영상의 원래 노드를 **숨기기만** 한다.
+   *   서버 순서는 이미 바뀌었으므로, 나중에 그 구간이 로드되면 유튜브가 새 자리에
+   *   그 영상을 다시 그린다. 원래 노드를 그대로 두면(또는 기준을 찾겠다고 아래를
+   *   더 로딩하면) 같은 영상이 두 개(원래 노드 + 유튜브가 새로 그린 노드)로 보인다 —
+   *   실제로 그렇게 "2개씩" 보이는 문제가 있었다. 그리고 여기서 추가 로딩을 하면
+   *   유튜브가 그 사이 수백 개를 더 렌더링하고 그걸 다시 비우지 않아 그 뒤로 계속
+   *   느려지므로, 보충 로딩은 하지 않는다(성능 설계 원칙).
+   *
    * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다.
-   * @returns 반영했으면 true
+   * @returns "moved" (자리 옮김) | "hidden" (숨김, 새 자리는 로드되면 보임) | false
    */
-  async function reflectMoveInDOM(movingVid, refVid) {
+  function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
     if (!movingNode) return false;
-    let refNode = findItemByVideoId(refVid);
+    const refNode = findItemByVideoId(refVid); // 숨긴 노드는 getVideoItems 에서 제외됨
     if (!refNode) {
-      refNode = await ensureLoaded(refVid, MOVE_REFLECT_MAX_TRIES);
+      hideMovedItem(movingNode);
+      return "hidden";
     }
-    if (!refNode || movingNode === refNode) return false;
+    if (movingNode === refNode) return false;
     if (refNode.nextElementSibling !== movingNode) {
       refNode.after(movingNode); // 기준 바로 뒤로
     }
     // DOM 을 막 건드린 직후라 smooth 스크롤은 무겁다(아래 flashItem 참고) — 즉시 이동.
     flashItem(movingNode, false);
-    return true;
+    return "moved";
   }
 
   // 외부에서 부르는 진입점: 직렬 큐에 넣어 순서를 보장한다.
@@ -1523,13 +1552,13 @@
 
       lastPlacedBySection[section.id] = videoId; // 다음 영상은 이 뒤에 → 보낸 순서 유지
       searchCorpus = null;
-      // 새로고침 없이 화면에도 바로 반영 (로드된 항목이면 DOM 에서 자리 이동,
-      // 살짝 안 보이는 정도면 제한된 범위 안에서 보충 로딩).
-      const reflected = await reflectMoveInDOM(videoId, domRefVid);
+      // 새로고침 없이 화면에도 바로 반영 (기준이 로드돼 있으면 DOM 에서 자리 이동,
+      // 아니면 원래 자리에서만 치우고, 새 자리는 그 구간이 로드될 때 유튜브가 그린다).
+      const reflected = reflectMoveInDOM(videoId, domRefVid);
       toast(
-        reflected
-          ? `"${section.label}" 밑으로 옮겼어요`
-          : `"${section.label}" 밑으로 옮겼어요 (멀리 있어 화면 반영은 새로고침 후)`
+        reflected === "hidden"
+          ? `"${section.label}" 밑으로 옮겼어요 (아래쪽이라 그 자리로 스크롤하면 보여요)`
+          : `"${section.label}" 밑으로 옮겼어요`
       );
       scheduleRender();
     } catch (err) {
@@ -1588,6 +1617,7 @@
     detachObserver();
     exitMoveMode();
     document.querySelectorAll(".ytpd-divider").forEach((el) => el.remove());
+    unhideAll();
     if (toolbarEl && toolbarEl.parentNode) toolbarEl.parentNode.removeChild(toolbarEl);
     hoverItem = null;
     if (panelEl) panelEl.style.display = "none";
@@ -1600,6 +1630,9 @@
       document.documentElement.classList.remove("ytpd-modal-open");
     }
     clearFlash();
+    // 이전 페이지에서 숨겨 둔 항목·캐시한 영상 ID 는 이 페이지에선 무효
+    unhideAll();
+    vidCache = new WeakMap();
     setupItemToolbar(); // hover 도구막대 위임 (최초 1회만 실제 등록)
 
     enabled = await loadEnabled();

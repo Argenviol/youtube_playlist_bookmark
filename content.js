@@ -469,6 +469,7 @@
     toolbarEl.style.zIndex = "9998";
     toolbarEl.style.display = "none";
     document.body.appendChild(toolbarEl);
+    setupDockResize();
 
     document.addEventListener(
       "pointerover",
@@ -501,29 +502,66 @@
     );
   }
 
+  // 유튜브 항목 오른쪽 끝의 ⋮(더보기) 버튼 열 너비. 확장 UI(도구막대·패널)는
+  // 이 열을 덮지 않도록 항상 그 왼쪽에 둔다 — 안 그러면 ⋮ 를 누를 수 없다.
+  const MENU_COL_PX = 60;
+
+  /** fixed 요소의 right 기준이 되는 레이아웃 뷰포트 너비 (스크롤바 제외) */
+  const viewportWidth = () => document.documentElement.clientWidth || window.innerWidth;
+
   function positionToolbar(item) {
     const r = item.getBoundingClientRect();
     if (r.width === 0 || r.bottom < 40 || r.top > window.innerHeight) {
       toolbarEl.style.display = "none";
       return;
     }
+    updateDock(r.right); // 방금 잰 값을 패널 위치에도 재사용 (추가 측정 없음)
+
     const top = r.top + 6;
+    const vw = viewportWidth();
     toolbarEl.style.display = "flex";
     toolbarEl.style.top = top + "px";
     toolbarEl.style.left = "auto";
 
-    // 기본: 영상 오른쪽 끝에 붙인다 (right = 뷰포트 오른쪽에서의 거리)
-    let rightPx = window.innerWidth - r.right + 10;
+    // 기본: 영상 오른쪽 끝의 ⋮ 버튼 바로 왼쪽에 붙인다 (right = 뷰포트 오른쪽에서의 거리)
+    let rightPx = vw - r.right + MENU_COL_PX;
 
     // 패널과 세로로 겹치면, 영상 왼쪽 끝까지 멀리 가지 말고
     // "패널 바로 왼쪽"까지만 밀어준다.
     const panel =
       panelEl && panelEl.style.display !== "none" ? panelEl.getBoundingClientRect() : null;
     if (panel && panel.width > 0 && top < panel.bottom && top + 36 > panel.top) {
-      const minRight = window.innerWidth - panel.left + 12; // 패널 왼쪽 바로 옆
+      const minRight = vw - panel.left + 12; // 패널 왼쪽 바로 옆
       if (rightPx < minRight) rightPx = minRight;
     }
     toolbarEl.style.right = rightPx + "px";
+  }
+
+  // ----- 패널 도킹: 유튜브 목록의 ⋮ 열을 덮지 않게 그 왼쪽에 붙인다 --------------
+  // 목록 오른쪽 끝 좌표는 (1) hover 시 도구막대가 어차피 재는 항목 rect 에서 공짜로,
+  // (2) 페이지 진입 시 1회, (3) 창 크기 변경 시(디바운스) 1회만 얻는다.
+  let dockRight = -1;
+
+  function updateDock(listRight) {
+    if (!panelEl || !(listRight > 0)) return;
+    const want = Math.max(18, Math.round(viewportWidth() - listRight + MENU_COL_PX));
+    if (want === dockRight) return; // 값이 같으면 스타일을 건드리지 않는다
+    dockRight = want;
+    panelEl.style.setProperty("--ytpd-dock-right", want + "px");
+  }
+
+  function measureDock() {
+    if (!enabled || !isPlaylistPage()) return;
+    const it = document.querySelector("ytd-playlist-video-renderer:not(.ytpd-hidden)");
+    if (it) updateDock(it.getBoundingClientRect().right);
+  }
+
+  let resizeTimer = null;
+  function setupDockResize() {
+    window.addEventListener("resize", () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(measureDock, 200);
+    });
   }
 
   /** 북마크 이름 입력 (body 모달 — 유튜브 항목 DOM 엔 안 씀) */
@@ -1666,6 +1704,7 @@
     }
     attachObserver();
     render();
+    measureDock(); // 패널을 ⋮ 열 왼쪽에 붙인다 (1회 측정)
 
     // 재생목록 제목 캐시 보정. 유튜브 헤더가 늦게 그려질 수 있어 한 번 더 확인한다.
     backfillTitle();

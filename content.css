@@ -243,7 +243,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   outline: 4px solid var(--ytpd-amber);
   outline-offset: 2px;
   background: rgba(240, 179, 42, 0.16);
-  box-shadow: 0 0 30px rgba(240, 179, 42, 0.55);
+  /* (넓은 box-shadow 는 강조가 켜진 20초 동안 스크롤마다 다시 칠해져 뺐다) */
 }
 
 
@@ -262,10 +262,14 @@ ytd-playlist-video-renderer.ytpd-hidden {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
   font-size: 14px;
   overflow: hidden;
+  /* 패널 안에서 뭘 다시 그려도 유튜브 페이지 레이아웃·페인트에 번지지 않게 격리 */
+  contain: layout style paint;
 }
 /* 오른쪽 위 / 오른쪽 아래 */
-#ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: 18px; left: auto; }
-#ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: 18px; left: auto; }
+/* right 는 유튜브 목록의 ⋮ 버튼 열을 덮지 않도록 content.js 가 --ytpd-dock-right 로
+   맞춰 준다 (측정 전엔 18px). */
+#ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
+#ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
 .ytpd-panel-head {
   display: flex;
   align-items: center;

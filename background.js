@@ -70,8 +70,13 @@ const SCOPES = "https://www.googleapis.com/auth/youtube";
  * ※ manifest 의 oauth2 키는 쓰지 않는다. 그건 크롬 전용 getAuthToken 방식용이고,
  *   여기서는 엣지에서도 되는 launchWebAuthFlow 를 쓴다. (빈 값을 넣으면 확장 로드 실패)
  */
+// 배포자가 자기 클라이언트 ID 를 내장하고 싶을 때 여기에 넣는다 (예:
+// "000000-xxxx.apps.googleusercontent.com"). ⚙ 모달에 입력한 값이 있으면 그게
+// 우선이고, 비어 있으면 이 값을 쓴다. 둘 다 없으면 ⚙ 모달이 열려 입력을 안내한다.
+const DEFAULT_CLIENT_ID = "";
+
 async function getOAuthConfig() {
-  const clientId = ((await storageGet("ytpd:clientId")) || "").trim();
+  const clientId = ((await storageGet("ytpd:clientId")) || DEFAULT_CLIENT_ID || "").trim();
   if (!clientId) {
     throw new Error(
       "구글 API 설정이 없어요. 패널의 구글 로그인 옆 ⚙ 에서 OAuth 클라이언트 ID를 입력해 주세요."

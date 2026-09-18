@@ -1326,7 +1326,13 @@
       signedIn = true;
       return true;
     } catch (err) {
-      toast("구글 로그인이 필요해요: " + err.message);
+      if (/설정이 없어요/.test(err.message || "")) {
+        // 클라이언트 ID 가 비어 있으면 토스트만 띄우지 말고 입력할 곳을 바로 연다
+        toast("↦북마크 는 구글 로그인이 필요해요. OAuth 클라이언트 ID 를 입력해 주세요");
+        openMiniSettings();
+      } else {
+        toast("구글 로그인이 필요해요: " + err.message);
+      }
       return false;
     }
   }

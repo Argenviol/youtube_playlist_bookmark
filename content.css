@@ -270,8 +270,15 @@ ytd-playlist-video-renderer.ytpd-hidden {
    --ytpd-dock-left 로 맞춰 준다 (측정 전엔 18px). */
 #ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
 #ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
-#ytpd-panel.ytpd-pos-bl { bottom: 18px; top: auto; left: var(--ytpd-dock-left, 18px); right: auto; }
-#ytpd-panel.ytpd-pos-tl { top: 70px; bottom: auto; left: var(--ytpd-dock-left, 18px); right: auto; }
+/* 왼쪽 위치는 본문 왼쪽 여백에 들어가므로, 여백이 좁으면 패널도 같이 좁아진다 */
+#ytpd-panel.ytpd-pos-bl,
+#ytpd-panel.ytpd-pos-tl {
+  right: auto;
+  left: var(--ytpd-dock-left, 18px);
+  width: var(--ytpd-panel-w-left, 372px);
+}
+#ytpd-panel.ytpd-pos-bl { bottom: 18px; top: auto; }
+#ytpd-panel.ytpd-pos-tl { top: 70px; bottom: auto; }
 .ytpd-panel-head {
   display: flex;
   align-items: center;

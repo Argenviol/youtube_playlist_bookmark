@@ -549,6 +549,27 @@
   let dockRight = -1;
 
   let dockLeft = -1;
+  let dockWidth = -1;
+
+  const PANEL_W = 372;     // 기본 패널 너비 (content.css 와 같은 값)
+  const PANEL_W_MIN = 268; // 왼쪽에 둘 때 이보다는 좁히지 않는다 (읽기 힘들어짐)
+
+  /**
+   * 유튜브 본문(재생목록 헤더 카드 + 영상 목록)의 왼쪽 끝 좌표.
+   * 왼쪽 위치일 때 패널을 이 선 바깥(왼쪽 여백)에 두기 위한 값이다.
+   * 헤더 카드가 목록보다 왼쪽에 있으므로 둘 중 더 왼쪽을 쓴다.
+   */
+  function contentLeftEdge(listLeft) {
+    let left = listLeft > 0 ? listLeft : Infinity;
+    const head = document.querySelector(
+      "ytd-playlist-header-renderer, yt-page-header-renderer, #page-header"
+    );
+    if (head) {
+      const hr = head.getBoundingClientRect();
+      if (hr.width > 0 && hr.left < left) left = hr.left;
+    }
+    return Number.isFinite(left) ? left : 0;
+  }
 
   function updateDock(listRight, listLeft) {
     if (!panelEl || !(listRight > 0)) return;
@@ -558,10 +579,19 @@
       dockRight = want; // 값이 같으면 스타일을 건드리지 않는다
       panelEl.style.setProperty("--ytpd-dock-right", want + "px");
     }
-    // 왼쪽 위치: 목록 왼쪽 끝보다 패널 너비만큼 더 왼쪽 (화면 밖으로는 안 나가게)
-    if (listLeft > 0) {
-      const w = panelEl.offsetWidth || 372;
-      const wantL = Math.max(12, Math.round(Math.min(listLeft - w - 12, vw - w - 12)));
+
+    // 왼쪽 위치: 본문 왼쪽의 빈 여백에 넣어 유튜브 화면을 가리지 않게 한다.
+    // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞추고(최소 PANEL_W_MIN),
+    // 그래도 안 되는 좁은 창에서는 왼쪽 끝에 붙인다.
+    const edge = contentLeftEdge(listLeft);
+    if (edge > 0) {
+      const gap = edge - 24; // 화면 왼쪽 12px + 본문과의 간격 12px
+      const w = Math.max(PANEL_W_MIN, Math.min(PANEL_W, Math.round(gap)));
+      const wantL = Math.max(12, Math.round(edge - 12 - w));
+      if (w !== dockWidth) {
+        dockWidth = w;
+        panelEl.style.setProperty("--ytpd-panel-w-left", w + "px");
+      }
       if (wantL !== dockLeft) {
         dockLeft = wantL;
         panelEl.style.setProperty("--ytpd-dock-left", wantL + "px");
@@ -801,6 +831,7 @@
     panelEl.querySelector(".ytpd-pos").addEventListener("click", async () => {
       const next = nextPanelPos(panelEl.dataset.pos || "tr");
       applyPanelPos(next);
+      measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
       await savePanelPos(next);
     });
     loadPanelPos().then(applyPanelPos);
@@ -1570,34 +1601,32 @@
   /**
    * 옮긴 영상을 화면(유튜브 목록)에도 반영한다.
    *
-   * - 기준 영상이 이미 화면에 로드돼 있으면: 옮긴 영상 노드를 기준 바로 뒤로 옮긴다.
-   *   (둘 다 로드된 구간 안에서의 이동이라, 아래쪽을 더 불러와도 겹치지 않는다)
-   * - 기준 영상이 아직 로드 안 됐으면: 옮긴 영상의 원래 노드를 **숨기기만** 한다.
-   *   서버 순서는 이미 바뀌었으므로, 나중에 그 구간이 로드되면 유튜브가 새 자리에
-   *   그 영상을 다시 그린다. 원래 노드를 그대로 두면(또는 기준을 찾겠다고 아래를
-   *   더 로딩하면) 같은 영상이 두 개(원래 노드 + 유튜브가 새로 그린 노드)로 보인다 —
-   *   실제로 그렇게 "2개씩" 보이는 문제가 있었다. 그리고 여기서 추가 로딩을 하면
-   *   유튜브가 그 사이 수백 개를 더 렌더링하고 그걸 다시 비우지 않아 그 뒤로 계속
-   *   느려지므로, 보충 로딩은 하지 않는다(성능 설계 원칙).
+   * 하는 일은 딱 하나 — 옮긴 영상의 **원래 노드를 숨긴다**. 서버 순서는 이미
+   * 바뀌었으므로, 새 자리는 그 구간이 (다시) 로드될 때 유튜브가 직접 그린다.
+   *
+   * 예전에는 기준 영상이 화면에 있으면 노드를 그 뒤로 옮겨 붙여 "바로 쌓이는" 모습을
+   * 보여 줬는데, 유튜브 목록의 자식 순서를 바꾸는 것은 유튜브 자신의 목록 컴포넌트가
+   * 관리하는 구조를 건드리는 일이라 이어 불러오기가 엉켜 무한 로딩이 났다.
+   * 그래서 지금은 구조를 전혀 바꾸지 않고, 클래스 하나로 숨기기만 한다.
+   *
+   * 여기서 아래쪽을 더 로딩하지도 않는다 — 유튜브가 그 사이 수백 개를 더 렌더링하고
+   * 그걸 다시 비우지 않아 그 뒤로 계속 느려지기 때문이다(성능 설계 원칙).
    *
    * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다.
-   * @returns "moved" (자리 옮김) | "hidden" (숨김, 새 자리는 로드되면 보임) | false
+   * @returns "moved" (숨김 + 기준 영상 강조) | "hidden" (숨김만) | false
    */
   function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
     if (!movingNode) return false;
+    hideMovedItem(movingNode);
     const refNode = findItemByVideoId(refVid); // 숨긴 노드는 getVideoItems 에서 제외됨
-    if (!refNode) {
-      hideMovedItem(movingNode);
-      return "hidden";
+    if (refNode && refNode !== movingNode) {
+      // 어디로 갔는지 보이게 기준 영상만 강조한다 (목록 구조는 건드리지 않음).
+      // 방금 DOM 을 건드린 직후라 smooth 스크롤은 무거워서 즉시 이동.
+      flashItem(refNode, false);
+      return "moved";
     }
-    if (movingNode === refNode) return false;
-    if (refNode.nextElementSibling !== movingNode) {
-      refNode.after(movingNode); // 기준 바로 뒤로
-    }
-    // DOM 을 막 건드린 직후라 smooth 스크롤은 무겁다(아래 flashItem 참고) — 즉시 이동.
-    flashItem(movingNode, false);
-    return "moved";
+    return "hidden";
   }
 
   // 외부에서 부르는 진입점: 직렬 큐에 넣어 순서를 보장한다.
@@ -1665,9 +1694,9 @@
       // 아니면 원래 자리에서만 치우고, 새 자리는 그 구간이 로드될 때 유튜브가 그린다).
       const reflected = reflectMoveInDOM(videoId, domRefVid);
       toast(
-        reflected === "hidden"
-          ? `"${section.label}" 밑으로 옮겼어요 (아래쪽이라 그 자리로 스크롤하면 보여요)`
-          : `"${section.label}" 밑으로 옮겼어요`
+        reflected === "moved"
+          ? `"${section.label}" 밑으로 옮겼어요 (새 자리는 새로고침하면 보여요)`
+          : `"${section.label}" 밑으로 옮겼어요 (그 자리로 스크롤하거나 새로고침하면 보여요)`
       );
       scheduleRender();
     } catch (err) {

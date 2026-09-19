@@ -164,24 +164,24 @@ ytd-playlist-video-renderer.ytpd-hidden {
   contain: layout style paint;
 }
 
-/* 패널 4방향 위치. 클래스는 content.js 의 applyPanelPos 가 "ytpd-pos-" + 값 으로
-   붙이므로 이 이름들은 JS 에 그대로 적혀 있지 않다 (지우지 말 것).
+/* 패널 위치 (왼쪽 위 / 오른쪽 위). 클래스는 content.js 의 applyPanelPos 가
+   "ytpd-pos-" + 값 으로 붙이므로 이 이름들은 JS 에 그대로 적혀 있지 않다 (지우지 말 것).
    가로 위치는 유튜브 목록을 덮지 않도록 --ytpd-dock-right / --ytpd-dock-left 로 맞춘다. */
-#ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
-
-#ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
+#ytpd-panel.ytpd-pos-tr {
+  top: 70px;
+  bottom: auto;
+  right: var(--ytpd-dock-right, 18px);
+  left: auto;
+}
 
 /* 왼쪽 위치는 본문 왼쪽 여백에 들어가므로, 여백이 좁으면 패널도 같이 좁아진다 */
-#ytpd-panel.ytpd-pos-bl,
 #ytpd-panel.ytpd-pos-tl {
+  top: 70px;
+  bottom: auto;
   right: auto;
   left: var(--ytpd-dock-left, 18px);
   width: var(--ytpd-panel-w-left, 372px);
 }
-
-#ytpd-panel.ytpd-pos-bl { bottom: 18px; top: auto; }
-
-#ytpd-panel.ytpd-pos-tl { top: 70px; bottom: auto; }
 
 /* 헤더의 "⟳" 경고 — ↦북마크 뒤 유튜브 목록이 옛 순서일 때만 보인다.
    패널을 접어도 헤더는 남으므로 경고가 사라지지 않는다. */
@@ -244,6 +244,13 @@ ytd-playlist-video-renderer.ytpd-hidden {
 
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
+}
+
+/* 지금 선택된 위치 버튼 */
+.ytpd-panel-head .ytpd-pos-on {
+  color: #1c1c1e;
+  background: var(--ytpd-amber);
+  border-color: var(--ytpd-amber);
 }
 
 /* 맨 처음/맨 끝 — 접어도 보이도록 헤더에 있다. 화살표가 작아 조금 키운다 */

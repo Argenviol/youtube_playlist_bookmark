@@ -139,6 +139,32 @@
     return document.querySelectorAll(ITEM_SEL).length;
   }
 
+  /**
+   * 목록을 더 불러오기 위한 스크롤.
+   *
+   * 페이지 맨 아래(scrollHeight)로 보내면 재생목록 아래에 붙어 있는 "추천 재생목록"
+   * 영역으로 내려가 버린다. 유튜브는 목록 끝의 "이어 불러오기" 표시가 화면에 들어올
+   * 때만 다음 묶음을 불러오므로, 그 표시(없으면 마지막 줄)를 화면에 넣어야
+   * 목록이 계속 이어진다 — 안 그러면 중간에서 멈춘다.
+   *
+   * @returns 아직 더 불러올 게 남아 있으면 true
+   */
+  function scrollListDown() {
+    const cont = document.querySelector("ytd-continuation-item-renderer");
+    if (cont) {
+      cont.scrollIntoView({ block: "center" });
+      return true;
+    }
+    const all = document.querySelectorAll(ITEM_SEL);
+    const last = all[all.length - 1];
+    if (last) {
+      last.scrollIntoView({ block: "end" });
+      return false; // 이어 불러오기 표시가 없다 = 목록 끝
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    return false;
+  }
+
   /** 이 항목의 한 칸 위(-1)/아래(+1) 영상 항목 (숨긴 줄은 건너뛴다) */
   function siblingItem(item, dir) {
     const step = dir < 0 ? "previousElementSibling" : "nextElementSibling";
@@ -226,14 +252,14 @@
   }
 
   // ----- 패널 위치 (오른쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 왼쪽 위, 전역 저장) ----
-  const PANEL_POSITIONS = ["tr", "br", "bl", "tl"];
+  const PANEL_POSITIONS = ["tl", "tr"];
 
   function loadPanelPos() {
     return new Promise((resolve) => {
       chrome.storage.local.get(["ytpd:panelPos"], (res) => {
         let pos = res["ytpd:panelPos"];
-        if (pos === "top") pos = "tr"; // 옛 값 이관
-        else if (pos === "bottom") pos = "br";
+        if (pos === "bl") pos = "tl"; // 아래쪽 위치는 없앴다 — 같은 쪽 위로 이관
+        else if (pos === "br" || pos === "bottom" || pos === "top") pos = "tr";
         if (!PANEL_POSITIONS.includes(pos)) pos = "tr"; // 모르는 값은 오른쪽 위로
         resolve(pos);
       });
@@ -246,13 +272,13 @@
   }
   function applyPanelPos(pos) {
     if (!panelEl) return;
+    if (!PANEL_POSITIONS.includes(pos)) pos = "tr";
     for (const p of PANEL_POSITIONS) panelEl.classList.remove("ytpd-pos-" + p);
-    panelEl.classList.add("ytpd-pos-" + (PANEL_POSITIONS.includes(pos) ? pos : "tr"));
+    panelEl.classList.add("ytpd-pos-" + pos);
     panelEl.dataset.pos = pos;
-  }
-  function nextPanelPos(cur) {
-    const i = PANEL_POSITIONS.indexOf(cur);
-    return PANEL_POSITIONS[(i + 1) % PANEL_POSITIONS.length];
+    for (const btn of panelEl.querySelectorAll(".ytpd-pos")) {
+      btn.classList.toggle("ytpd-pos-on", btn.dataset.pos === pos);
+    }
   }
 
   // ----- 섹션 조작 ------------------------------------------------------------
@@ -322,7 +348,7 @@
     let target = siblingItem(cur, dir);
     if (!target && dir > 0) {
       // 아래로 옮기는데 다음 영상이 아직 로딩 전이면 조금 더 불러온다
-      window.scrollTo(0, document.documentElement.scrollHeight);
+      scrollListDown();
       await sleep(320);
       cur = findItemByVideoId(s.anchorVideoId);
       target = cur && siblingItem(cur, dir);
@@ -651,8 +677,7 @@
 
     // 왼쪽 값은 패널이 실제로 왼쪽에 있을 때만 잰다 — 기본(오른쪽)에서는 쓰이지도
     // 않는데 hover 마다 문서 전체 querySelector + 레이아웃을 유발하던 비용이었다.
-    const pos = panelEl.dataset.pos;
-    if (pos !== "bl" && pos !== "tl") return;
+    if (panelEl.dataset.pos !== "tl") return;
 
     // 왼쪽 위치: 본문 왼쪽의 빈 여백에 넣어 유튜브 화면을 가리지 않게 한다.
     // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞추고(최소 PANEL_W_MIN),
@@ -879,7 +904,8 @@
         <span class="ytpd-spacer"></span>
         <button class="ytpd-nav-top" type="button" title="재생목록 맨 처음으로">⤒</button>
         <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
-        <button class="ytpd-pos" type="button" title="패널 위치 (오른쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 왼쪽 위)">⇱</button>
+        <button class="ytpd-pos" type="button" data-pos="tl" title="패널을 왼쪽 위로">◤</button>
+        <button class="ytpd-pos" type="button" data-pos="tr" title="패널을 오른쪽 위로">◥</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
         <button class="ytpd-set" type="button" title="구글 로그인 설정 (↦북마크 영상 이동용)">⚙</button>
       </div>
@@ -892,7 +918,9 @@
       </div>`;
     document.body.appendChild(panelEl);
 
-    panelEl.querySelector(".ytpd-set").addEventListener("click", openMiniSettings);
+    // 화살표로 감싼다 — 그냥 넘기면 click 이벤트가 첫 인자(오류 메시지) 자리로 들어가
+    // "로그인 안 됨 — [object PointerEvent]" 처럼 표시된다.
+    panelEl.querySelector(".ytpd-set").addEventListener("click", () => openMiniSettings());
     // 경고는 패널을 접어도 보여야 하므로 헤더에 둔다 (본문은 접으면 숨겨진다)
     panelEl.querySelector(".ytpd-stale").addEventListener("click", () => location.reload());
 
@@ -908,13 +936,16 @@
     });
 
     // 패널 위치 전환 — 누를 때마다 6방향으로 순환 (선택을 저장해 다음에도 유지)
-    panelEl.querySelector(".ytpd-pos").addEventListener("click", async () => {
-      const next = nextPanelPos(panelEl.dataset.pos || "tr");
-      applyPanelPos(next);
-      invalidateMeasurements();
-      measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
-      await savePanelPos(next);
-    });
+    // 위치는 순환이 아니라 버튼 하나에 한 자리씩 (왼쪽 위 / 오른쪽 위)
+    for (const btn of panelEl.querySelectorAll(".ytpd-pos")) {
+      btn.addEventListener("click", async () => {
+        const pos = btn.dataset.pos;
+        applyPanelPos(pos);
+        invalidateMeasurements();
+        measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
+        await savePanelPos(pos);
+      });
+    }
     loadPanelPos().then(applyPanelPos);
 
     // 검색 (노래제목 / 가수)
@@ -1407,12 +1438,15 @@
     try {
       let lastCount = -1;
       let stagnant = 0;
-      for (let tries = 0; tries < 80; tries++) {
-        window.scrollTo(0, document.documentElement.scrollHeight);
+      // 긴 재생목록도 끝까지 가도록 시도 횟수를 넉넉히 둔다. 어차피 끝에 닿으면
+      // "이어 불러오기" 표시가 사라져서 곧장 빠져나온다.
+      for (let tries = 0; tries < 400; tries++) {
+        const more = scrollListDown();
         await sleep(280);
         const count = countVideoItems();
+        if (!more && count === lastCount) break; // 표시도 없고 더 안 늘면 진짜 끝
         if (count === lastCount) {
-          if (++stagnant >= 3) break; // 더 안 불려오면 끝 도달
+          if (++stagnant >= 6) break; // 한참 아무것도 안 불려오면 중단
         } else {
           stagnant = 0;
           lastCount = count;
@@ -1430,7 +1464,7 @@
   }
 
   /**
-   * 특정 영상이 로드될 때까지 페이지 하단으로 스크롤하며 기다린다.
+   * 특정 영상이 로드될 때까지 목록 끝으로 스크롤하며 기다린다.
    * 로딩이 잠깐 멈춰도(네트워크 지연) 쉽게 포기하지 않도록 넉넉히 버틴다.
    * @param {string} videoId
    * @param {number} maxTries  최대 스크롤 시도 횟수 (기본 200 = 끝까지).
@@ -1448,13 +1482,14 @@
     // "여러 번 연속으로 더 안 불려올 때"만 끝으로 판단.
     // (예전엔 3번=0.8초만 멈춰도 포기해서, 로딩이 살짝 끊기면 못 찾는다고 떴다)
     for (let tries = 0; tries < maxTries; tries++) {
-      window.scrollTo(0, document.documentElement.scrollHeight);
+      const more = scrollListDown();
       await sleep(260);
 
       item = findItemByVideoId(videoId);
       if (item) return item;
 
       const count = countVideoItems();
+      if (!more && count === lastCount) break; // 목록 끝까지 왔는데 없다
       if (count === lastCount) {
         if (++stagnant >= 8) break; // ~2초간 아무것도 안 불려오면 진짜 끝
       } else {

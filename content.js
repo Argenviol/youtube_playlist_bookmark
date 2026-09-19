@@ -1357,7 +1357,7 @@
         다른 기능은 로그인 없이 그대로 됩니다.
       </div>
 
-      <details class="ytpd-guide" data-guide>
+      <details class="ytpd-guide">
         <summary>📖 사용법 — 구글 로그인 준비 (처음 한 번만, 약 5분)</summary>
         <div class="ytpd-guide-body">
           <div class="ytpd-guide-why">
@@ -1456,8 +1456,6 @@
     chrome.storage.local.get(["ytpd:clientId", "ytpd:clientSecret"], (res) => {
       $("[data-clientid]").value = res["ytpd:clientId"] || "";
       $("[data-clientsecret]").value = res["ytpd:clientSecret"] || "";
-      // 아직 설정 전이면 사용법을 펼쳐서 보여 준다
-      if (!res["ytpd:clientId"]) $("[data-guide]").open = true;
     });
     bg("getRedirectUri")
       .then((r) => ($("[data-redirect]").value = r.uri))

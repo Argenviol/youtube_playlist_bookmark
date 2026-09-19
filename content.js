@@ -178,8 +178,8 @@
     });
   }
 
-  // ----- 패널 위치 (오른쪽 위 ↔ 오른쪽 아래, 전역 저장) ------------------------
-  const PANEL_POSITIONS = ["tr", "br"];
+  // ----- 패널 위치 (오른쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 왼쪽 위, 전역 저장) ----
+  const PANEL_POSITIONS = ["tr", "br", "bl", "tl"];
 
   function loadPanelPos() {
     return new Promise((resolve) => {
@@ -187,7 +187,7 @@
         let pos = res["ytpd:panelPos"];
         if (pos === "top") pos = "tr"; // 옛 값 이관
         else if (pos === "bottom") pos = "br";
-        if (!PANEL_POSITIONS.includes(pos)) pos = "tr"; // 옛 6방향 값도 오른쪽 위로
+        if (!PANEL_POSITIONS.includes(pos)) pos = "tr"; // 모르는 값은 오른쪽 위로
         resolve(pos);
       });
     });
@@ -462,6 +462,8 @@
    * 도구막대 설정 (한 번만). 도구막대는 document.body 에 fixed 로 띄우고,
    * 마우스 올린 항목의 화면 위치에 맞춰 옮긴다. → 유튜브 항목 DOM 에는 절대 안 씀.
    */
+  let lastOverTarget = null; // pointerover 조기 종료용
+
   function setupItemToolbar() {
     if (toolbarEl) return;
     toolbarEl = buildToolbar();
@@ -474,6 +476,10 @@
     document.addEventListener(
       "pointerover",
       (e) => {
+        // 같은 엘리먼트 위에서 마우스가 움직일 때는 아무것도 하지 않는다.
+        // (pointerover 는 아주 자주 불리므로 가장 먼저 걸러 내는 게 싸다)
+        if (e.target === lastOverTarget) return;
+        lastOverTarget = e.target;
         if (!enabled || !isPlaylistPage()) return;
         if (toolbarEl.contains(e.target)) return; // 도구막대 위에선 유지
         const item = e.target.closest && e.target.closest("ytd-playlist-video-renderer");
@@ -515,7 +521,7 @@
       toolbarEl.style.display = "none";
       return;
     }
-    updateDock(r.right); // 방금 잰 값을 패널 위치에도 재사용 (추가 측정 없음)
+    updateDock(r.right, r.left); // 방금 잰 값을 패널 위치에도 재사용 (추가 측정 없음)
 
     const top = r.top + 6;
     const vw = viewportWidth();
@@ -542,18 +548,33 @@
   // (2) 페이지 진입 시 1회, (3) 창 크기 변경 시(디바운스) 1회만 얻는다.
   let dockRight = -1;
 
-  function updateDock(listRight) {
+  let dockLeft = -1;
+
+  function updateDock(listRight, listLeft) {
     if (!panelEl || !(listRight > 0)) return;
-    const want = Math.max(18, Math.round(viewportWidth() - listRight + MENU_COL_PX));
-    if (want === dockRight) return; // 값이 같으면 스타일을 건드리지 않는다
-    dockRight = want;
-    panelEl.style.setProperty("--ytpd-dock-right", want + "px");
+    const vw = viewportWidth();
+    const want = Math.max(18, Math.round(vw - listRight + MENU_COL_PX));
+    if (want !== dockRight) {
+      dockRight = want; // 값이 같으면 스타일을 건드리지 않는다
+      panelEl.style.setProperty("--ytpd-dock-right", want + "px");
+    }
+    // 왼쪽 위치: 목록 왼쪽 끝보다 패널 너비만큼 더 왼쪽 (화면 밖으로는 안 나가게)
+    if (listLeft > 0) {
+      const w = panelEl.offsetWidth || 372;
+      const wantL = Math.max(12, Math.round(Math.min(listLeft - w - 12, vw - w - 12)));
+      if (wantL !== dockLeft) {
+        dockLeft = wantL;
+        panelEl.style.setProperty("--ytpd-dock-left", wantL + "px");
+      }
+    }
   }
 
   function measureDock() {
     if (!enabled || !isPlaylistPage()) return;
     const it = document.querySelector("ytd-playlist-video-renderer:not(.ytpd-hidden)");
-    if (it) updateDock(it.getBoundingClientRect().right);
+    if (!it) return;
+    const r = it.getBoundingClientRect();
+    updateDock(r.right, r.left);
   }
 
   let resizeTimer = null;
@@ -751,7 +772,7 @@
         <span class="ytpd-spacer"></span>
         <button class="ytpd-nav-top" type="button" title="재생목록 맨 처음으로">⤒</button>
         <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
-        <button class="ytpd-pos" type="button" title="패널 위치 (오른쪽 위 ↔ 오른쪽 아래)">↕</button>
+        <button class="ytpd-pos" type="button" title="패널 위치 (오른쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 왼쪽 위)">⇱</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
         <button class="ytpd-set" type="button" title="구글 로그인 설정 (↦북마크 영상 이동용)">⚙</button>
       </div>
@@ -1312,13 +1333,10 @@
       signedIn = true;
       return true;
     } catch (err) {
-      if (/설정이 없어요/.test(err.message || "")) {
-        // 클라이언트 ID 가 비어 있으면 토스트만 띄우지 말고 입력할 곳을 바로 연다
-        toast("↦북마크 는 구글 로그인이 필요해요. OAuth 클라이언트 ID 를 입력해 주세요");
-        openMiniSettings();
-      } else {
-        toast("구글 로그인이 필요해요: " + err.message);
-      }
+      // 실패 원인이 무엇이든 설정·사용법이 있는 ⚙ 모달을 바로 연다
+      // (여기서만 클라이언트 ID 입력과 단계별 안내를 볼 수 있다)
+      toast("구글 로그인이 필요해요: " + err.message);
+      openMiniSettings(err.message);
       return false;
     }
   }
@@ -1327,7 +1345,7 @@
    * 최소 설정 모달 — 로그인/로그아웃 + 본인 구글 API 클라이언트 ID.
    * "↦북마크"(영상 이동)에만 필요하고, 다른 기능엔 필요 없다.
    */
-  async function openMiniSettings() {
+  async function openMiniSettings(errorMessage) {
     const back = document.createElement("div");
     back.className = "ytpd-modal-back";
     const box = document.createElement("div");
@@ -1335,11 +1353,65 @@
     box.innerHTML = `
       <div class="ytpd-modal-title">⚙ 구글 로그인 설정</div>
       <div class="ytpd-set-desc">
-        "↦북마크"(영상을 북마크 밑으로 이동)에만 필요합니다. 다른 기능은 로그인 없이
-        그대로 됩니다. 본인 구글 클라우드의 OAuth 클라이언트 ID(웹 애플리케이션)가
-        필요하고, 아래 리디렉션 URI 를 그 클라이언트의 "승인된 리디렉션 URI" 에
-        등록해 주세요.
+        "↦북마크"(영상을 북마크 밑으로 이동)에만 필요합니다. 북마크 추가·점프·검색 등
+        다른 기능은 로그인 없이 그대로 됩니다.
       </div>
+
+      <details class="ytpd-guide" data-guide>
+        <summary>📖 사용법 — 구글 로그인 준비 (처음 한 번만, 약 5분)</summary>
+        <div class="ytpd-guide-body">
+          <div class="ytpd-guide-why">
+            유튜브 재생목록의 <b>순서를 바꾸는 것</b>은 구글이 로그인한 본인만 허용합니다.
+            그래서 "내 구글 계정으로 이 확장을 쓰겠다"는 열쇠(OAuth 클라이언트 ID)를
+            한 번 만들어야 합니다. 무료이고, 아래 순서대로 누르기만 하면 됩니다.
+          </div>
+          <ol class="ytpd-guide-steps">
+            <li>
+              <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">
+                구글 클라우드 프로젝트 만들기 ↗</a>
+              <div>이름은 아무거나 (예: <code>youtube-bookmark</code>) → <b>만들기</b>.
+                이미 프로젝트가 있으면 건너뛰어도 됩니다.</div>
+            </li>
+            <li>
+              <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">
+                YouTube Data API v3 켜기 ↗</a>
+              <div>파란 <b>사용</b>(Enable) 버튼을 누릅니다. 위쪽에 1번에서 만든 프로젝트가
+                선택돼 있는지 확인하세요.</div>
+            </li>
+            <li>
+              <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">
+                OAuth 동의 화면 만들기 ↗</a>
+              <div>앱 이름·이메일만 채우고, 사용자 유형은 <b>외부</b>(External)로 저장합니다.</div>
+            </li>
+            <li>
+              <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">
+                내 구글 계정을 테스트 사용자로 추가 ↗</a>
+              <div><b>테스트 사용자 → 추가</b> 에 본인 지메일 주소를 넣습니다.
+                <b>이걸 빠뜨리면 로그인할 때 거부됩니다.</b></div>
+            </li>
+            <li>
+              <a href="https://console.cloud.google.com/apis/credentials/oauthclient" target="_blank" rel="noopener">
+                OAuth 클라이언트 ID 만들기 ↗</a>
+              <div>유형은 반드시 <b>웹 애플리케이션</b>. 그리고
+                <b>승인된 리디렉션 URI</b> 에 아래 "리디렉션 URI" 칸의 값을
+                (<b>복사</b> 버튼) 그대로 붙여넣고 만들기를 누릅니다.</div>
+            </li>
+            <li>
+              만들어지면 뜨는 <b>클라이언트 ID</b>
+              (<code>...apps.googleusercontent.com</code>)를 복사해
+              아래 칸에 붙여넣고 <b>저장</b> → <b>구글 로그인</b> 을 누르면 끝입니다.
+              <div>나중에 다시 볼 때는
+                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">사용자 인증 정보 ↗</a>
+                에서 확인합니다.</div>
+            </li>
+          </ol>
+          <div class="ytpd-guide-note">
+            로그인할 때 "확인되지 않은 앱" 경고가 나오면 <b>고급 → 이동</b> 을 누르세요.
+            구글 심사를 받지 않은 본인 전용 앱이라 뜨는 정상 경고입니다.
+            하루 사용량은 영상 이동 약 200회까지입니다.
+          </div>
+        </div>
+      </details>
       <div class="ytpd-set-status" data-auth>확인 중…</div>
       <div class="ytpd-set-row">
         <button type="button" class="ytpd-set-btn" data-login>구글 로그인</button>
@@ -1371,7 +1443,11 @@
     const authEl = $("[data-auth]");
 
     const paintAuth = () => {
-      authEl.textContent = signedIn ? "✓ 로그인됨" : "로그인 안 됨";
+      authEl.textContent = signedIn
+        ? "✓ 로그인됨"
+        : errorMessage
+        ? "로그인 안 됨 — " + errorMessage
+        : "로그인 안 됨";
       authEl.classList.toggle("ytpd-set-ok", signedIn);
     };
 
@@ -1380,6 +1456,8 @@
     chrome.storage.local.get(["ytpd:clientId", "ytpd:clientSecret"], (res) => {
       $("[data-clientid]").value = res["ytpd:clientId"] || "";
       $("[data-clientsecret]").value = res["ytpd:clientSecret"] || "";
+      // 아직 설정 전이면 사용법을 펼쳐서 보여 준다
+      if (!res["ytpd:clientId"]) $("[data-guide]").open = true;
     });
     bg("getRedirectUri")
       .then((r) => ($("[data-redirect]").value = r.uri))
@@ -1389,9 +1467,12 @@
       try {
         await bg("signIn");
         signedIn = true;
+        errorMessage = "";
         paintAuth();
         toast("로그인했어요");
       } catch (e) {
+        errorMessage = e.message;
+        paintAuth();
         toast(e.message);
       }
     });

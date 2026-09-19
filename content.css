@@ -266,15 +266,17 @@ ytd-playlist-video-renderer.ytpd-hidden {
   contain: layout style paint;
 }
 /* 오른쪽 위 / 오른쪽 아래 */
-/* right 는 유튜브 목록의 ⋮ 버튼 열을 덮지 않도록 content.js 가 --ytpd-dock-right 로
-   맞춰 준다 (측정 전엔 18px). */
+/* 가로 위치는 유튜브 목록을 덮지 않도록 content.js 가 --ytpd-dock-right /
+   --ytpd-dock-left 로 맞춰 준다 (측정 전엔 18px). */
 #ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
 #ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
+#ytpd-panel.ytpd-pos-bl { bottom: 18px; top: auto; left: var(--ytpd-dock-left, 18px); right: auto; }
+#ytpd-panel.ytpd-pos-tl { top: 70px; bottom: auto; left: var(--ytpd-dock-left, 18px); right: auto; }
 .ytpd-panel-head {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 10px 10px 12px;
+  gap: 9px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--ytpd-border);
 }
 .ytpd-panel-title {
@@ -337,6 +339,72 @@ ytd-playlist-video-renderer.ytpd-hidden {
   color: var(--ytpd-text-dim);
   margin-bottom: 10px;
 }
+/* 사용법 (접이식) */
+.ytpd-guide {
+  margin: 4px 0 12px;
+  border: 1px solid var(--ytpd-border);
+  border-radius: 8px;
+  background: var(--ytpd-bg-soft);
+}
+.ytpd-guide > summary {
+  padding: 9px 11px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ytpd-amber);
+  cursor: pointer;
+  list-style: none;
+}
+.ytpd-guide > summary::-webkit-details-marker { display: none; }
+.ytpd-guide > summary::before {
+  content: "▸ ";
+}
+.ytpd-guide[open] > summary::before {
+  content: "▾ ";
+}
+.ytpd-guide-body {
+  padding: 0 11px 11px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ytpd-text-dim);
+}
+.ytpd-guide-why {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ytpd-border);
+}
+.ytpd-guide-steps {
+  margin: 0;
+  padding-left: 18px;
+}
+.ytpd-guide-steps > li {
+  margin-bottom: 9px;
+}
+.ytpd-guide-steps a,
+.ytpd-guide-note a {
+  color: var(--ytpd-amber);
+  font-weight: 600;
+  text-decoration: none;
+}
+.ytpd-guide-steps a:hover,
+.ytpd-guide-note a:hover {
+  text-decoration: underline;
+}
+.ytpd-guide-steps code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+}
+.ytpd-guide-steps b,
+.ytpd-guide-note b {
+  color: var(--ytpd-text);
+}
+.ytpd-guide-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ytpd-border);
+}
+
 .ytpd-set-label {
   font-size: 12px;
   color: var(--ytpd-text-dim);

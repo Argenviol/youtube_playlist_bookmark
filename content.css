@@ -273,8 +273,8 @@ ytd-playlist-video-renderer.ytpd-hidden {
 .ytpd-panel-head {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 10px 10px 10px 12px;
   border-bottom: 1px solid var(--ytpd-border);
 }
 .ytpd-panel-title {
@@ -307,6 +307,12 @@ ytd-playlist-video-renderer.ytpd-hidden {
 }
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
+}
+/* 맨 처음/맨 끝 — 접어도 보이도록 헤더에 있다. 화살표가 작아 조금 키운다 */
+.ytpd-panel-head .ytpd-nav-top,
+.ytpd-panel-head .ytpd-nav-end {
+  font-size: 15px;
+  color: var(--ytpd-amber);
 }
 /* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
 .ytpd-panel-head .ytpd-set {
@@ -537,19 +543,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   background: var(--ytpd-amber);
 }
 
-/* 기본 북마크(맨 처음/맨 끝) 행 */
-.ytpd-row-nav .ytpd-row-name {
-  color: var(--ytpd-text-dim);
-  font-weight: 600;
-}
-.ytpd-row-dot.ytpd-dot-nav {
-  background: var(--ytpd-text-dim);
-}
-.ytpd-row-nav-end {
-  border-bottom: 1px solid var(--ytpd-border);
-  margin-bottom: 4px;
-  padding-bottom: 9px;
-}
 .ytpd-row-name {
   flex: 1 1 auto;
   font-size: 13.5px;

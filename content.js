@@ -749,6 +749,8 @@
       <div class="ytpd-panel-head">
         <span class="ytpd-panel-title">북마크</span>
         <span class="ytpd-spacer"></span>
+        <button class="ytpd-nav-top" type="button" title="재생목록 맨 처음으로">⤒</button>
+        <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
         <button class="ytpd-pos" type="button" title="패널 위치 (오른쪽 위 ↔ 오른쪽 아래)">↕</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
         <button class="ytpd-set" type="button" title="구글 로그인 설정 (↦북마크 영상 이동용)">⚙</button>
@@ -763,6 +765,10 @@
     document.body.appendChild(panelEl);
 
     panelEl.querySelector(".ytpd-set").addEventListener("click", openMiniSettings);
+
+    // 맨 처음/맨 끝은 헤더에 둔다 — 패널을 접어도 계속 쓸 수 있게.
+    panelEl.querySelector(".ytpd-nav-top").addEventListener("click", jumpToStart);
+    panelEl.querySelector(".ytpd-nav-end").addEventListener("click", jumpToEnd);
 
     panelEl.querySelector(".ytpd-toggle").addEventListener("click", () => {
       panelEl.classList.toggle("ytpd-collapsed");
@@ -806,11 +812,7 @@
     // 현재 재생목록 이름 (클릭하면 북마크가 있는 다른 재생목록 펼치기)
     rows.appendChild(buildPlaylistHeader());
 
-    // 기본 북마크 (항상 표시): 맨 처음 / 맨 끝
-    rows.appendChild(buildNavRow("⤒ 맨 처음", "재생목록 맨 처음으로", jumpToStart));
-    rows.appendChild(
-      buildNavRow("⤓ 맨 끝", "재생목록 맨 끝으로 (끝까지 로딩)", jumpToEnd, "ytpd-row-nav-end")
-    );
+    // 맨 처음 / 맨 끝은 헤더 버튼(⤒ ⤓)으로 옮겼다 — 접어도 보이도록.
 
     if (ordered.length === 0) {
       const empty = document.createElement("div");
@@ -1168,22 +1170,6 @@
       isAutoJumping = false;
       scheduleRender();
     }
-  }
-
-  /** 패널의 기본 북마크(처음/끝) 행 생성 */
-  function buildNavRow(label, title, onClick, extraClass) {
-    const row = document.createElement("div");
-    row.className = "ytpd-row ytpd-row-nav" + (extraClass ? " " + extraClass : "");
-    const dot = document.createElement("span");
-    dot.className = "ytpd-row-dot ytpd-dot-nav";
-    const name = document.createElement("span");
-    name.className = "ytpd-row-name";
-    name.textContent = label;
-    row.appendChild(dot);
-    row.appendChild(name);
-    row.title = title;
-    row.addEventListener("click", onClick);
-    return row;
   }
 
   /**

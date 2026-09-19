@@ -630,6 +630,19 @@ ytd-playlist-video-renderer.ytpd-hidden {
 .ytpd-row-moved .ytpd-row-dot {
   background: var(--ytpd-amber-dim);
 }
+/* 유튜브 목록이 옛 순서인 상태 — 삭제·드래그 전에 새로고침이 필요하다 */
+.ytpd-row-stale {
+  border-style: solid;
+  border-color: var(--ytpd-amber);
+  background: rgba(240, 179, 42, 0.12);
+}
+.ytpd-row-stale .ytpd-row-name {
+  color: var(--ytpd-amber);
+  font-weight: 700;
+}
+.ytpd-row-stale .ytpd-row-dot {
+  background: var(--ytpd-amber);
+}
 
 .ytpd-row-name {
   flex: 1 1 auto;

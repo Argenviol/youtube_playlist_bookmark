@@ -1125,6 +1125,12 @@
   // 패널 맨 위에 줄로 띄워 "누를 때만" 찾아가게 한다(자동 로딩 없음 = 렉 없음).
   const LAST_MOVED_MS = 10 * 60 * 1000;
   let pendingMoved = null;
+  // ↦북마크 로 순서를 바꾸면 "지금 화면에 떠 있는" 유튜브 목록은 옛 순서 그대로다.
+  // 유튜브는 그 옛 상태를 기준으로 삭제·드래그를 처리하므로, 그 사이에 영상을 지우면
+  // 엉뚱한 영상이 지워지거나 다른 영상이 그 자리로 밀려 들어온다 — 새로고침해야
+  // 풀린다. 확장이 유튜브의 내부 목록을 고쳐 줄 방법은 없어서, 새로고침 전에는
+  // 이 상태를 눈에 띄게 알려 준다. (새로고침하면 바로 사라짐)
+  let listStale = false;
 
   function loadPendingMoved() {
     return new Promise((resolve) => {
@@ -1139,6 +1145,7 @@
 
   function clearPendingMoved() {
     pendingMoved = null;
+    listStale = false;
     chrome.storage.local.remove("ytpd:lastMoved");
     scheduleRender();
   }
@@ -1146,21 +1153,38 @@
   /** "방금 옮긴 영상으로" 줄 — 누르면 그 영상까지 찾아간다 */
   function buildMovedRow(videoId) {
     const row = document.createElement("div");
-    row.className = "ytpd-row ytpd-row-moved";
+    row.className = "ytpd-row ytpd-row-moved" + (listStale ? " ytpd-row-stale" : "");
     const dot = document.createElement("span");
     dot.className = "ytpd-row-dot";
     const name = document.createElement("span");
     name.className = "ytpd-row-name";
-    name.textContent = "↩ 방금 옮긴 영상으로";
+    name.textContent = listStale ? "⟳ 새로고침 후 삭제하세요" : "↩ 방금 옮긴 영상으로";
     row.appendChild(dot);
     row.appendChild(name);
-    row.title = "새로고침 전에 ↦북마크 로 보낸 영상으로 이동합니다";
-    row.addEventListener("click", async () => {
-      const item = await jumpToVideoId(videoId);
-      if (item) clearPendingMoved();
+    row.title = listStale
+      ? "↦북마크 로 순서를 바꾸면 이 페이지에 떠 있는 목록은 옛 순서 그대로예요.\n" +
+        "그 상태에서 영상을 삭제하거나 드래그하면 엉뚱한 영상이 지워지거나 자리가 밀립니다.\n" +
+        "클릭 = 새로고침 (새로고침 뒤에는 방금 옮긴 영상으로 가는 줄이 떠요)"
+      : "↦북마크 로 보낸 영상으로 이동합니다";
+    row.addEventListener("click", () => {
+      if (listStale) {
+        location.reload();
+        return;
+      }
+      jumpToVideoId(videoId).then((item) => {
+        if (item) clearPendingMoved();
+      });
     });
-    const close = rowBtn("✕", "이 줄 숨기기", () => clearPendingMoved());
-    row.appendChild(close);
+
+    // 새로고침이 필요한 상태에서도 "그냥 그 영상 보기"는 남겨 둔다
+    if (listStale) {
+      row.appendChild(
+        rowBtn("↩", "새로고침 없이 방금 옮긴 영상 위치만 보기", () => {
+          jumpToVideoId(videoId);
+        })
+      );
+    }
+    row.appendChild(rowBtn("✕", "이 줄 숨기기", () => clearPendingMoved()));
     return row;
   }
 
@@ -1826,6 +1850,7 @@
       searchCorpus = null;
       // 유튜브가 스스로 새로고침해도 방금 옮긴 영상으로 돌아올 수 있게 기억해 둔다
       pendingMoved = videoId;
+      listStale = true; // 새로고침 전까지 유튜브 목록은 옛 순서 (삭제·드래그 위험)
       chrome.storage.local.set({
         "ytpd:lastMoved": { pid: playlistId, videoId, ts: Date.now() },
       });
@@ -1833,9 +1858,7 @@
       // 아니면 원래 자리에서만 치우고, 새 자리는 그 구간이 로드될 때 유튜브가 그린다).
       const reflected = reflectMoveInDOM(videoId, domRefVid);
       toast(
-        reflected === "moved"
-          ? `"${section.label}" 밑으로 옮겼어요 (새 자리는 새로고침하면 보여요)`
-          : `"${section.label}" 밑으로 옮겼어요 (그 자리로 스크롤하거나 새로고침하면 보여요)`
+        `"${section.label}" 밑으로 옮겼어요 — 영상을 삭제하거나 드래그하기 전에 새로고침하세요`
       );
       scheduleRender();
     } catch (err) {
@@ -1907,6 +1930,7 @@
     }
     clearFlash();
     unhideAll(); // 이전 페이지에서 숨겨 둔 항목은 이 페이지에선 무효
+    listStale = false; // 새로 그려진 목록이므로 유튜브 쪽 순서도 최신이다
     setupItemToolbar(); // hover 도구막대 위임 (최초 1회만 실제 등록)
 
     enabled = await loadEnabled();

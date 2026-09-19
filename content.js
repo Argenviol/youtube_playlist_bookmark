@@ -8,7 +8,6 @@
 //
 // 핵심 기능:
 //   - 북마크 추가/삭제/점프/검색/이름 바꾸기
-//   - 북마크를 다른(멀리 있는) 영상으로 재배치 ("📍여기로")
 //   - 재생목록에 "이미 있는" 영상을 골라 북마크 바로 밑(섹션 맨 위)으로 이동 ("↦북마크")
 //
 // 위 대부분은 로컬 저장(chrome.storage.local)만 쓴다. "↦북마크"(영상 이동)만
@@ -35,7 +34,6 @@
   let renderTimer = null;         // 렌더 디바운스 타이머
   let signedIn = false;           // OAuth 로그인 상태 (자동 로그인, "↦북마크" 전용)
   let panelEl = null;             // 우측 하단 패널 DOM
-  let movingSectionId = null;     // 북마크 이동 모드 — 옮기는 중인 북마크 id
   let toolbarEl = null;           // 공용 hover 도구막대 (항목마다 만들지 않음)
   let hoverItem = null;           // 도구막대가 현재 올라가 있는 항목
   let enabled = true;             // 확장 사용 여부 (팝업 토글, "ytpd:enabled")
@@ -320,7 +318,6 @@
 
   async function deleteSection(id) {
     data.sections = data.sections.filter((s) => s.id !== id);
-    if (movingSectionId === id) exitMoveMode();
     await saveSections();
     scheduleRender();
   }
@@ -368,50 +365,6 @@
       return it;
     }
     return null;
-  }
-
-  // ----- 북마크 이동 모드 ------------------------------------------------------
-  // 노란 라벨 클릭 → 이동 모드 on → 영상의 "📍여기로" 클릭 → 그 영상 아래로 북마크 이동.
-  // (API 불필요 — anchorVideoId 만 바꾸는 로컬 작업)
-  function enterMoveMode(sectionId) {
-    movingSectionId = sectionId;
-    document.body.classList.add("ytpd-move-mode");
-    const s = getSection(sectionId);
-    toast(`"${s ? s.label : "북마크"}" 옮기는 중 — 놓을 영상의 '📍여기로'를 누르세요 (Esc 취소)`);
-    scheduleRender();
-  }
-
-  function exitMoveMode() {
-    if (!movingSectionId) return;
-    movingSectionId = null;
-    document.body.classList.remove("ytpd-move-mode");
-    scheduleRender();
-  }
-
-  async function reanchorSection(sectionId, newVideoId) {
-    const s = getSection(sectionId);
-    if (!s) return;
-    if (!newVideoId) {
-      toast("이 항목의 영상 ID를 찾지 못했어요");
-      return;
-    }
-    if (newVideoId === s.anchorVideoId) {
-      exitMoveMode();
-      return; // 같은 자리 — 변화 없음
-    }
-    const conflict = data.sections.some((x) => x.id !== sectionId && x.anchorVideoId === newVideoId);
-    if (conflict) {
-      toast("그 영상에는 이미 다른 북마크가 있어요");
-      return;
-    }
-    s.anchorVideoId = newVideoId;
-    s.prevVideoIds = null; // 자리가 바뀌었으니 예전 이웃 정보는 버린다
-    await saveSections();
-    const moved = findItemByVideoId(newVideoId);
-    if (moved) recordNeighbors(s, moved);
-    exitMoveMode();
-    scheduleRender();
-    toast(`"${s.label}" 북마크를 옮겼어요`);
   }
 
   /**
@@ -500,21 +453,8 @@
       openMoveMenu(hoverItem, vid);
     });
 
-    const hereBtn = document.createElement("button");
-    hereBtn.type = "button";
-    hereBtn.className = "ytpd-tool-btn ytpd-tool-here";
-    hereBtn.textContent = "📍여기로";
-    hereBtn.title = "옮기는 중인 북마크를 이 영상 아래로 이동";
-    hereBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!movingSectionId || !hoverItem) return;
-      reanchorSection(movingSectionId, getVideoId(hoverItem));
-    });
-
     tb.appendChild(addDiv);
     tb.appendChild(moveBtn);
-    tb.appendChild(hereBtn);
     return tb;
   }
 
@@ -979,7 +919,7 @@
 
     for (const s of ordered) {
       const row = document.createElement("div");
-      row.className = "ytpd-row" + (s.id === movingSectionId ? " ytpd-row-moving" : "");
+      row.className = "ytpd-row";
 
       row.draggable = true;
       row.title = "클릭: 그 영상으로 이동 · 끌어서 놓기: 북마크 순서 바꾸기";
@@ -1043,15 +983,6 @@
       navGroup.className = "ytpd-row-group";
       navGroup.appendChild(rowBtn("▲", "한 칸 위 영상으로", () => nudgeSection(s.id, -1)));
       navGroup.appendChild(rowBtn("▼", "한 칸 아래 영상으로", () => nudgeSection(s.id, +1)));
-      const moving = s.id === movingSectionId;
-      navGroup.appendChild(
-        rowBtn(
-          moving ? "✕" : "📍",
-          moving ? "이동 취소" : "다른 영상으로 옮기기 (누른 뒤 대상 영상의 📍여기로 클릭)",
-          () => (moving ? exitMoveMode() : enterMoveMode(s.id)),
-          moving ? "ytpd-btn-active" : ""
-        )
-      );
 
       const editGroup = document.createElement("span");
       editGroup.className = "ytpd-row-group";
@@ -1961,7 +1892,6 @@
   /** 끄기: 페이지에서 패널·북마크·도구막대를 모두 치우고 감시 중단 */
   function disableUI() {
     detachObserver();
-    exitMoveMode();
     document.querySelectorAll(".ytpd-divider").forEach((el) => el.remove());
     unhideAll();
     if (toolbarEl && toolbarEl.parentNode) toolbarEl.parentNode.removeChild(toolbarEl);
@@ -2034,15 +1964,6 @@
     if (enabled) init();
     else disableUI();
   });
-
-  // Esc 로 북마크 이동 모드 취소
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.key === "Escape" && movingSectionId) exitMoveMode();
-    },
-    true
-  );
 
   // 유튜브는 새로고침 없이 이동 → yt-navigate-finish 로 재초기화
   window.addEventListener("yt-navigate-finish", () => {

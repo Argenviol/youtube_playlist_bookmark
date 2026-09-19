@@ -36,17 +36,6 @@
   color: #1c1c1e;
 }
 
-/* 구분선 이동 모드: 평소엔 "여기로" 숨김, 이동 모드에선 그것만 항상 표시 */
-.ytpd-tool-here {
-  display: none;
-}
-body.ytpd-move-mode .ytpd-item-tools .ytpd-tool-btn:not(.ytpd-tool-here) {
-  display: none;
-}
-body.ytpd-move-mode .ytpd-tool-here {
-  display: inline-block;
-}
-
 /* ---------- body 모달 (구분선 이름 / 보내기 선택) ------------------------- */
 .ytpd-modal-back {
   position: fixed;
@@ -699,11 +688,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-color: var(--ytpd-amber);
   color: #1c1c1e;
 }
-.ytpd-row-moving {
-  outline: 1px dashed var(--ytpd-amber);
-  outline-offset: -1px;
-}
-
 /* ---------- 분석 배지 (DOM 항목 위) -------------------------------------- */
 ytd-playlist-video-renderer .ytpd-badge {
   position: absolute;

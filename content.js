@@ -1681,6 +1681,17 @@
             구글 심사를 받지 않은 본인 전용 앱이라 뜨는 정상 경고입니다.
             하루 사용량은 영상 이동 약 200회까지입니다.
           </div>
+          <div class="ytpd-guide-note">
+            <b>로그인을 계속 유지하려면</b> — 아래 "보안 비밀번호(secret)" 칸을 채우면
+            갱신 토큰을 받아 PC를 껐다 켜도 로그인이 풀리지 않습니다. 다만 동의 화면이
+            <b>테스트</b> 상태면 구글이 그 갱신 토큰을 <b>7일</b> 뒤 만료시켜서, 일주일에
+            한 번쯤 로그인 창이 다시 뜹니다(그때도 자동으로 이어집니다).
+            아예 안 뜨게 하려면
+            <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">
+              대상(게시 상태) ↗</a>
+            에서 <b>앱 게시 → 프로덕션</b> 으로 바꾸세요. 심사 없이 게시해도 되고,
+            "확인되지 않은 앱" 경고만 지금처럼 그대로 뜹니다.
+          </div>
         </div>
       </details>
       <div class="ytpd-set-status" data-auth>확인 중…</div>
@@ -1697,8 +1708,10 @@
       <input class="ytpd-modal-input" data-clientid placeholder="000000-xxxx.apps.googleusercontent.com">
       <div class="ytpd-set-label">
         OAuth 클라이언트 보안 비밀번호(secret) — 선택. 넣으면 PC를 껐다 켜도
-        로그인이 계속 유지됩니다(refresh token). 비워두면 지금처럼 1시간마다
-        조용히 갱신을 시도하고, 가끔 로그인 창이 다시 뜰 수 있어요.
+        로그인이 유지됩니다(refresh token). 비워두면 지금처럼 1시간마다 조용히
+        갱신을 시도하고, 가끔 로그인 창이 다시 뜰 수 있어요.
+        동의 화면이 "테스트" 상태면 넣어도 7일마다 한 번은 다시 떠요 —
+        위 📖 사용법의 "로그인을 계속 유지하려면" 참고.
       </div>
       <input class="ytpd-modal-input" data-clientsecret type="password" placeholder="선택 — 비워두면 기존 방식 그대로">
       <div class="ytpd-set-row">

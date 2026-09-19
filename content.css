@@ -15,8 +15,10 @@
 
 /* ---------- 항목 hover 도구 모음 (body 에 fixed — 유튜브 DOM 에 안 넣음) ------ */
 .ytpd-item-tools {
+  contain: layout style paint;
   gap: 6px;                    /* 위치/표시는 JS 인라인 스타일(fixed)로 제어 */
 }
+
 .ytpd-tool-btn {
   padding: 6px 13px;
   font-size: 13px;
@@ -31,6 +33,7 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   transition: background 0.12s ease, color 0.12s ease;
 }
+
 .ytpd-tool-btn:hover {
   background: var(--ytpd-amber);
   color: #1c1c1e;
@@ -46,6 +49,7 @@
   align-items: center;
   justify-content: center;
 }
+
 .ytpd-modal {
   width: 320px;
   max-width: 86vw;
@@ -58,12 +62,14 @@
   padding: 16px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
 }
+
 .ytpd-modal-title {
   font-size: 15px;
   font-weight: 700;
   color: var(--ytpd-amber);
   margin-bottom: 10px;
 }
+
 .ytpd-modal-input {
   width: 100%;
   box-sizing: border-box;
@@ -75,6 +81,7 @@
   border-radius: 8px;
   outline: none;
 }
+
 .ytpd-modal-opt {
   display: block;
   width: 100%;
@@ -91,99 +98,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .ytpd-modal-opt:hover:not(:disabled) {
   background: var(--ytpd-bg-soft);
   color: var(--ytpd-amber);
 }
+
 .ytpd-modal-opt:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
 .ytpd-modal-opt-desc {
   margin-top: 4px;
   font-size: 11.5px;
   font-weight: 400;
   color: var(--ytpd-text-dim);
   white-space: normal;
-}
-
-/* 옮기는 중인 구분선 강조 */
-.ytpd-divider-moving {
-  outline: 2px dashed var(--ytpd-amber);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-.ytpd-divider-label {
-  cursor: pointer;
-}
-
-/* ---------- "구분선으로 보내기" 선택 메뉴 --------------------------------- */
-.ytpd-move-menu {
-  position: absolute;
-  top: 36px;
-  right: 8px;
-  z-index: 7;
-  min-width: 200px;
-  max-width: 60vw;
-  max-height: 50vh;
-  overflow-y: auto;
-  background: var(--ytpd-bg);
-  border: 1px solid var(--ytpd-border);
-  border-radius: 8px;
-  padding: 6px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-}
-.ytpd-move-title {
-  padding: 4px 8px 6px;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-}
-.ytpd-move-opt {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  font-size: 12px;
-  color: var(--ytpd-text);
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ytpd-move-opt:hover:not(:disabled) {
-  background: var(--ytpd-bg-soft);
-  color: var(--ytpd-amber);
-}
-.ytpd-move-opt:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ---------- 인라인 입력창 (구분선 이름) ----------------------------------- */
-.ytpd-inline {
-  position: absolute;
-  top: 36px;
-  right: 8px;
-  z-index: 6;
-  background: var(--ytpd-bg);
-  border: 1px solid var(--ytpd-border);
-  border-radius: 8px;
-  padding: 6px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-}
-.ytpd-inline input {
-  width: 240px;
-  max-width: 60vw;
-  padding: 6px 8px;
-  font-size: 13px;
-  color: var(--ytpd-text);
-  background: #111;
-  border: 1px solid var(--ytpd-amber-dim);
-  border-radius: 6px;
-  outline: none;
 }
 
 /* ---------- 구분선 본체 --------------------------------------------------- */
@@ -194,27 +125,6 @@
   margin: 10px 0 6px;
   padding: 2px 4px;
   position: relative;
-}
-.ytpd-divider-label {
-  flex: 0 0 auto;
-  padding: 2px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1c1c1e;
-  background: var(--ytpd-amber);
-  border-radius: 6px;
-  letter-spacing: 0.2px;
-}
-.ytpd-divider-line {
-  flex: 1 1 auto;
-  height: 1px;
-  /* 호박색에서 투명으로 사라지는 hairline */
-  background: linear-gradient(90deg, var(--ytpd-amber-dim), rgba(255, 255, 255, 0.04));
-}
-.ytpd-divider-count {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
 }
 
 /* ---------- "↦북마크"로 아직 로드 안 된 곳에 보낸 영상의 원래 노드 --------- */
@@ -235,7 +145,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   /* (넓은 box-shadow 는 강조가 켜진 20초 동안 스크롤마다 다시 칠해져 뺐다) */
 }
 
-
 /* ---------- 떠 있는 패널 (6방향 위치) ------------------------------------ */
 #ytpd-panel {
   position: fixed;
@@ -254,11 +163,14 @@ ytd-playlist-video-renderer.ytpd-hidden {
   /* 패널 안에서 뭘 다시 그려도 유튜브 페이지 레이아웃·페인트에 번지지 않게 격리 */
   contain: layout style paint;
 }
-/* 오른쪽 위 / 오른쪽 아래 */
-/* 가로 위치는 유튜브 목록을 덮지 않도록 content.js 가 --ytpd-dock-right /
-   --ytpd-dock-left 로 맞춰 준다 (측정 전엔 18px). */
+
+/* 패널 4방향 위치. 클래스는 content.js 의 applyPanelPos 가 "ytpd-pos-" + 값 으로
+   붙이므로 이 이름들은 JS 에 그대로 적혀 있지 않다 (지우지 말 것).
+   가로 위치는 유튜브 목록을 덮지 않도록 --ytpd-dock-right / --ytpd-dock-left 로 맞춘다. */
 #ytpd-panel.ytpd-pos-tr { top: 70px; bottom: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
+
 #ytpd-panel.ytpd-pos-br { bottom: 18px; top: auto; right: var(--ytpd-dock-right, 18px); left: auto; }
+
 /* 왼쪽 위치는 본문 왼쪽 여백에 들어가므로, 여백이 좁으면 패널도 같이 좁아진다 */
 #ytpd-panel.ytpd-pos-bl,
 #ytpd-panel.ytpd-pos-tl {
@@ -266,8 +178,30 @@ ytd-playlist-video-renderer.ytpd-hidden {
   left: var(--ytpd-dock-left, 18px);
   width: var(--ytpd-panel-w-left, 372px);
 }
+
 #ytpd-panel.ytpd-pos-bl { bottom: 18px; top: auto; }
+
 #ytpd-panel.ytpd-pos-tl { top: 70px; bottom: auto; }
+
+/* 헤더의 "⟳" 경고 — ↦북마크 뒤 유튜브 목록이 옛 순서일 때만 보인다.
+   패널을 접어도 헤더는 남으므로 경고가 사라지지 않는다. */
+.ytpd-stale {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #1c1c1e;
+  background: var(--ytpd-amber);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ytpd-stale[hidden] {
+  display: none;
+}
+
 .ytpd-panel-head {
   display: flex;
   align-items: center;
@@ -275,13 +209,16 @@ ytd-playlist-video-renderer.ytpd-hidden {
   padding: 10px 12px;
   border-bottom: 1px solid var(--ytpd-border);
 }
+
 .ytpd-panel-title {
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.2px;
   color: var(--ytpd-amber);
 }
+
 .ytpd-spacer { flex: 1 1 auto; }
+
 .ytpd-panel-head button {
   display: inline-flex;
   align-items: center;
@@ -298,27 +235,33 @@ ytd-playlist-video-renderer.ytpd-hidden {
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
+
 .ytpd-panel-head button:hover {
   color: #1c1c1e;
   background: var(--ytpd-amber);
   border-color: var(--ytpd-amber);
 }
+
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
 }
+
 /* 맨 처음/맨 끝 — 접어도 보이도록 헤더에 있다. 화살표가 작아 조금 키운다 */
 .ytpd-panel-head .ytpd-nav-top,
 .ytpd-panel-head .ytpd-nav-end {
   font-size: 15px;
   color: var(--ytpd-amber);
 }
+
 /* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
 .ytpd-panel-head .ytpd-set {
   font-size: 15px;
 }
+
 .ytpd-panel-head button:hover {
   border-color: var(--ytpd-amber-dim);
 }
+
 .ytpd-panel-body {
   overflow-y: auto;
   padding: 6px;
@@ -329,12 +272,14 @@ ytd-playlist-video-renderer.ytpd-hidden {
 .ytpd-modal.ytpd-modal-wide {
   width: 420px;
 }
+
 .ytpd-set-desc {
   font-size: 12px;
   line-height: 1.6;
   color: var(--ytpd-text-dim);
   margin-bottom: 10px;
 }
+
 /* 사용법 (접이식) */
 .ytpd-guide {
   margin: 4px 0 12px;
@@ -342,6 +287,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-radius: 8px;
   background: var(--ytpd-bg-soft);
 }
+
 .ytpd-guide > summary {
   padding: 9px 11px;
   font-size: 12.5px;
@@ -350,51 +296,63 @@ ytd-playlist-video-renderer.ytpd-hidden {
   cursor: pointer;
   list-style: none;
 }
+
 .ytpd-guide > summary::-webkit-details-marker { display: none; }
+
 .ytpd-guide > summary::before {
   content: "▸ ";
 }
+
 .ytpd-guide[open] > summary::before {
   content: "▾ ";
 }
+
 .ytpd-guide-body {
   padding: 0 11px 11px;
   font-size: 12px;
   line-height: 1.65;
   color: var(--ytpd-text-dim);
 }
+
 .ytpd-guide-why {
   padding-bottom: 8px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--ytpd-border);
 }
+
 .ytpd-guide-steps {
   margin: 0;
   padding-left: 18px;
 }
+
 .ytpd-guide-steps > li {
   margin-bottom: 9px;
 }
+
 .ytpd-guide-steps a,
 .ytpd-guide-note a {
   color: var(--ytpd-amber);
   font-weight: 600;
   text-decoration: none;
 }
+
 .ytpd-guide-steps a:hover,
 .ytpd-guide-note a:hover {
   text-decoration: underline;
 }
+
 .ytpd-guide-steps code {
   padding: 1px 4px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
   font-size: 11.5px;
 }
+
 .ytpd-guide-steps b,
 .ytpd-guide-note b {
   color: var(--ytpd-text);
 }
+
 .ytpd-guide-note {
   margin-top: 10px;
   padding-top: 8px;
@@ -406,24 +364,29 @@ ytd-playlist-video-renderer.ytpd-hidden {
   color: var(--ytpd-text-dim);
   margin: 8px 0 4px;
 }
+
 .ytpd-set-status {
   font-size: 12.5px;
   color: var(--ytpd-text-dim);
   margin-bottom: 8px;
 }
+
 .ytpd-set-status.ytpd-set-ok {
   color: var(--ytpd-amber);
 }
+
 .ytpd-set-row {
   display: flex;
   gap: 6px;
   align-items: center;
   margin-top: 8px;
 }
+
 .ytpd-set-row .ytpd-modal-input {
   flex: 1 1 auto;
   min-width: 0;
 }
+
 .ytpd-set-btn {
   flex: 0 0 auto;
   padding: 8px 14px;
@@ -436,17 +399,20 @@ ytd-playlist-video-renderer.ytpd-hidden {
   cursor: pointer;
   white-space: nowrap;
 }
+
 .ytpd-set-btn:hover {
   color: var(--ytpd-amber);
   border-color: var(--ytpd-amber-dim);
   background: rgba(240, 179, 42, 0.1);
 }
+
 .ytpd-set-foot {
   justify-content: flex-end;
   border-top: 1px solid var(--ytpd-border);
   padding-top: 12px;
   margin-top: 12px;
 }
+
 #ytpd-panel.ytpd-collapsed .ytpd-panel-body {
   display: none;
 }
@@ -465,6 +431,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--ytpd-border);
 }
+
 .ytpd-plhead-bar {
   display: flex;
   align-items: center;
@@ -473,9 +440,11 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-radius: 8px;
   cursor: pointer;
 }
+
 .ytpd-plhead-bar:hover {
   background: var(--ytpd-bg-soft);
 }
+
 .ytpd-plhead-name {
   flex: 1 1 auto;
   font-size: 13.5px;
@@ -485,6 +454,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 /* 접기/펼치기 화살표 — 버튼처럼 보이게 크고 또렷하게 */
 .ytpd-caret-btn {
   flex: 0 0 auto;
@@ -501,17 +471,20 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-radius: 8px;
   transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
+
 .ytpd-plhead-bar:hover .ytpd-caret-btn,
 .ytpd-sechead:hover .ytpd-caret-btn {
   color: #1c1c1e;
   background: var(--ytpd-amber);
   border-color: var(--ytpd-amber);
 }
+
 .ytpd-plhead-list {
   padding: 4px 8px 2px;
   font-size: 11px;
   color: var(--ytpd-text-dim);
 }
+
 .ytpd-plhead-item {
   display: block;
   padding: 5px 6px;
@@ -523,23 +496,28 @@ ytd-playlist-video-renderer.ytpd-hidden {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .ytpd-plhead-item:hover {
   background: var(--ytpd-bg-soft);
   color: var(--ytpd-amber);
 }
+
 .ytpd-plhead-item.ytpd-plhead-cur {
   color: var(--ytpd-amber);
   font-weight: 600;
 }
+
 .ytpd-plhead-none {
   padding: 4px 6px;
   opacity: 0.7;
 }
+
 .ytpd-plhead-row {
   display: flex;
   align-items: center;
   gap: 4px;
 }
+
 .ytpd-plhead-row .ytpd-plhead-item {
   flex: 1 1 auto;
   min-width: 0;
@@ -547,6 +525,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .ytpd-plhead-del {
   flex: 0 0 auto;
   width: 20px;
@@ -559,6 +538,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-radius: 6px;
   cursor: pointer;
 }
+
 .ytpd-plhead-del:hover {
   color: #ff6b6b;
   border-color: #ff6b6b;
@@ -575,9 +555,11 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border-radius: 0 0 8px 8px;
   cursor: pointer;
 }
+
 .ytpd-sechead:hover {
   background: var(--ytpd-bg-soft);
 }
+
 .ytpd-sechead-name {
   flex: 1 1 auto;
   font-size: 12.5px;
@@ -585,7 +567,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   letter-spacing: 0.2px;
   color: var(--ytpd-text);
 }
-
 
 .ytpd-row {
   display: flex;
@@ -596,9 +577,11 @@ ytd-playlist-video-renderer.ytpd-hidden {
   cursor: pointer;
   transition: background 0.12s ease;
 }
+
 .ytpd-row:hover {
   background: var(--ytpd-bg-soft);
 }
+
 .ytpd-row-dot {
   flex: 0 0 auto;
   width: 8px;
@@ -611,13 +594,16 @@ ytd-playlist-video-renderer.ytpd-hidden {
 .ytpd-row[draggable="true"] {
   cursor: grab;
 }
+
 .ytpd-row.ytpd-row-drag {
   opacity: 0.45;
   cursor: grabbing;
 }
+
 .ytpd-row.ytpd-drop-before {
   box-shadow: inset 0 2px 0 0 var(--ytpd-amber);
 }
+
 .ytpd-row.ytpd-drop-after {
   box-shadow: inset 0 -2px 0 0 var(--ytpd-amber);
 }
@@ -627,21 +613,9 @@ ytd-playlist-video-renderer.ytpd-hidden {
   border: 1px dashed var(--ytpd-amber-dim);
   margin-bottom: 4px;
 }
+
 .ytpd-row-moved .ytpd-row-dot {
   background: var(--ytpd-amber-dim);
-}
-/* 유튜브 목록이 옛 순서인 상태 — 삭제·드래그 전에 새로고침이 필요하다 */
-.ytpd-row-stale {
-  border-style: solid;
-  border-color: var(--ytpd-amber);
-  background: rgba(240, 179, 42, 0.12);
-}
-.ytpd-row-stale .ytpd-row-name {
-  color: var(--ytpd-amber);
-  font-weight: 700;
-}
-.ytpd-row-stale .ytpd-row-dot {
-  background: var(--ytpd-amber);
 }
 
 .ytpd-row-name {
@@ -652,19 +626,13 @@ ytd-playlist-video-renderer.ytpd-hidden {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ytpd-row-meta {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-}
-.ytpd-row-meta.ytpd-row-missing {
-  color: #d98c8c;
-}
+
 .ytpd-row-group {
   flex: 0 0 auto;
   display: flex;
   gap: 3px;
 }
+
 .ytpd-row-add {
   flex: 0 0 auto;
   width: 28px;
@@ -681,51 +649,36 @@ ytd-playlist-video-renderer.ytpd-hidden {
   opacity: 0.6;
   transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
+
 .ytpd-row:hover .ytpd-row-add {
   opacity: 1;
   border-color: var(--ytpd-amber-dim);
 }
+
 .ytpd-row-add:hover {
   background: var(--ytpd-amber);
   color: #1c1c1e;
   opacity: 1;
 }
+
 .ytpd-row-add.ytpd-btn-danger:hover {
   background: #e0574f;
   border-color: #e0574f;
   color: #fff;
 }
+
 .ytpd-row-add.ytpd-btn-active {
   opacity: 1;
   background: var(--ytpd-amber);
   border-color: var(--ytpd-amber);
   color: #1c1c1e;
 }
-/* ---------- 분석 배지 (DOM 항목 위) -------------------------------------- */
-ytd-playlist-video-renderer .ytpd-badge {
-  position: absolute;
-  top: 6px;
-  left: 8px;
-  z-index: 5;
-  padding: 2px 7px;
-  font-size: 11px;
-  font-weight: 700;
-  border-radius: 999px;
-  pointer-events: none;
-}
-.ytpd-badge-problem {
-  color: #2a0f0f;
-  background: #ff6b6b;
-}
-.ytpd-badge-dup {
-  color: #1c1c1e;
-  background: #ffd479;
-}
 
 /* ---------- 패널: 검색 (노래제목 / 가수) -------------------------------- */
 .ytpd-search {
   margin-bottom: 6px;
 }
+
 .ytpd-search-input {
   width: 100%;
   box-sizing: border-box;
@@ -737,32 +690,40 @@ ytd-playlist-video-renderer .ytpd-badge {
   border-radius: 8px;
   outline: none;
 }
+
 .ytpd-search-input:focus {
   border-color: var(--ytpd-amber-dim);
 }
+
 .ytpd-search-results {
   margin-top: 4px;
 }
+
 .ytpd-search-results:empty {
   display: none;
 }
+
 .ytpd-search-status {
   padding: 5px 8px;
   font-size: 12px;
   color: var(--ytpd-text);
 }
+
 .ytpd-search-status b {
   color: var(--ytpd-amber);
 }
+
 .ytpd-search-src {
   color: var(--ytpd-text-dim);
   font-size: 11px;
 }
+
 .ytpd-search-tip {
   margin-top: 2px;
   font-size: 11px;
   color: var(--ytpd-text-dim);
 }
+
 .ytpd-search-row {
   display: flex;
   align-items: center;
@@ -772,15 +733,18 @@ ytd-playlist-video-renderer .ytpd-badge {
   cursor: pointer;
   font-size: 12px;
 }
+
 .ytpd-search-row:hover {
   background: var(--ytpd-bg-soft);
 }
+
 .ytpd-search-name {
   flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .ytpd-search-meta {
   flex: 0 0 auto;
   font-size: 11px;
@@ -789,123 +753,6 @@ ytd-playlist-video-renderer .ytpd-badge {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* ---------- 패널: 분석 결과 블록 ----------------------------------------- */
-.ytpd-analysis {
-  margin-bottom: 6px;
-}
-.ytpd-analysis:empty {
-  display: none;
-}
-.ytpd-analysis-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ytpd-amber);
-  border-bottom: 1px dashed var(--ytpd-border);
-}
-.ytpd-analysis-clear {
-  width: 20px;
-  height: 20px;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-  background: transparent;
-  border: 1px solid var(--ytpd-border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.ytpd-analysis-clear:hover {
-  color: #ff6b6b;
-  border-color: #ff6b6b;
-}
-.ytpd-analysis-grouptitle {
-  padding: 6px 8px 2px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ytpd-text-dim);
-}
-.ytpd-analysis-dupgroup {
-  padding: 5px 8px 1px;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ytpd-analysis-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.ytpd-analysis-row:hover {
-  background: var(--ytpd-bg-soft);
-}
-.ytpd-analysis-row.ytpd-analysis-noid {
-  cursor: default;
-  opacity: 0.6;
-}
-.ytpd-analysis-name {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ytpd-analysis-problem .ytpd-analysis-name::before {
-  content: "⚠ ";
-}
-.ytpd-analysis-dup .ytpd-analysis-name::before {
-  content: "🔁 ";
-}
-.ytpd-analysis-meta {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: #d98c8c;
-}
-.ytpd-analysis-hint {
-  padding: 2px 8px 4px;
-  font-size: 11px;
-  color: var(--ytpd-text-dim);
-}
-
-/* 제거(🗑) 버튼 — 행 hover 시 표시 */
-.ytpd-analysis-del {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
-  background: transparent;
-  border: 1px solid var(--ytpd-border);
-  border-radius: 6px;
-  cursor: pointer;
-  opacity: 0;
-}
-.ytpd-analysis-row:hover .ytpd-analysis-del {
-  opacity: 1;
-}
-.ytpd-analysis-del:hover {
-  border-color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.15);
-}
-
-/* 제거된 항목 기록 */
-.ytpd-removed-head {
-  color: var(--ytpd-text-dim);
-  margin-top: 4px;
-}
-.ytpd-removed-row {
-  cursor: default;
-  opacity: 0.75;
-}
-.ytpd-removed-row .ytpd-analysis-name {
-  text-decoration: line-through;
 }
 
 /* ---------- 토스트 ------------------------------------------------------- */
@@ -926,6 +773,7 @@ ytd-playlist-video-renderer .ytpd-badge {
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
+
 #ytpd-toast.ytpd-show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
@@ -934,7 +782,9 @@ ytd-playlist-video-renderer .ytpd-badge {
 /* ---------- 모션 최소화 존중 -------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .ytpd-flash { animation: none; }
+
   #ytpd-toast { transition: opacity 0.15s ease; }
+
 }
 
 /* ---------- 모달이 열려 있는 동안 뒤 페이지 고정 ------------------------- */
@@ -942,3 +792,4 @@ html.ytpd-modal-open,
 html.ytpd-modal-open body {
   overflow: hidden !important;
 }
+

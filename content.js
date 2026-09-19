@@ -27,10 +27,6 @@
   // ----- 모듈 상태 -------------------------------------------------------------
   let playlistId = null;          // 현재 재생목록 ID
   let data = { sections: [] };    // 현재 재생목록의 북마크 데이터
-  let observer = null;            // 항목 컨테이너 감시용
-  let observerTarget = null;      // 감시 대상 엘리먼트
-  let isRendering = false;        // 렌더 재진입 방지
-  let isAutoJumping = false;      // 자동 로딩 점프 중에는 렌더 스킵
   let renderTimer = null;         // 렌더 디바운스 타이머
   let signedIn = false;           // OAuth 로그인 상태 (자동 로그인, "↦북마크" 전용)
   let panelEl = null;             // 우측 하단 패널 DOM
@@ -53,8 +49,16 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const uid = () => "s_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+  // 매 hover 마다 URL 을 새로 파싱하지 않도록 값을 기억한다.
+  // 유튜브는 SPA 라 주소는 화면 이동 때만 바뀌고, 그때 init() 이 다시 계산한다.
+  let onPlaylistPage = false;
+  function computeIsPlaylistPage() {
+    onPlaylistPage =
+      location.pathname === "/playlist" && location.search.includes("list=");
+    return onPlaylistPage;
+  }
   function isPlaylistPage() {
-    return location.pathname === "/playlist" && new URLSearchParams(location.search).has("list");
+    return onPlaylistPage;
   }
 
   function getPlaylistId() {
@@ -76,7 +80,15 @@
    * 헤더 DOM 을 먼저 보고, 없으면 document.title 에서 뽑는다.
    * (document.title 은 SPA 이동 직후 아직 안 바뀐 값일 수 있어 후순위)
    */
+  let titleCache = ""; // 화면 이동 때 init() 에서 비운다
   function getPlaylistTitle() {
+    if (titleCache) return titleCache;
+    const t = readPlaylistTitle();
+    if (t) titleCache = t;
+    return t;
+  }
+
+  function readPlaylistTitle() {
     for (const sel of TITLE_SELECTORS) {
       const el = document.querySelector(sel);
       const t = el && (el.textContent || "").trim();
@@ -95,7 +107,8 @@
    */
   function backfillTitle() {
     if (!playlistId || !data.sections || !data.sections.length) return;
-    const title = getPlaylistTitle();
+    const title = readPlaylistTitle(); // 헤더가 늦게 그려질 수 있어 캐시를 거치지 않는다
+    if (title) titleCache = title;
     if (!title || data.title === title) return;
     data.title = title;
     chrome.storage.local.set({ [storageKey()]: data });
@@ -115,10 +128,38 @@
    * 그 영상은 논리적으로 이미 그 자리에 없고, 나중에 그 구간이 로드되면 유튜브가
    * 새 위치에 다시 그린다(아래 reflectMoveInDOM 참고).
    */
+  const ITEM_SEL = "ytd-playlist-video-renderer:not(.ytpd-hidden)";
+
   function getVideoItems() {
-    return Array.from(
-      document.querySelectorAll("ytd-playlist-video-renderer:not(.ytpd-hidden)")
-    );
+    return Array.from(document.querySelectorAll(ITEM_SEL));
+  }
+
+  /** 로드된 항목 수 — 배열을 만들지 않는다 (로딩 대기 루프에서 자주 부른다) */
+  function countVideoItems() {
+    return document.querySelectorAll(ITEM_SEL).length;
+  }
+
+  /** 이 항목의 한 칸 위(-1)/아래(+1) 영상 항목 (숨긴 줄은 건너뛴다) */
+  function siblingItem(item, dir) {
+    const step = dir < 0 ? "previousElementSibling" : "nextElementSibling";
+    for (let node = item[step]; node; node = node[step]) {
+      if (node.matches(ITEM_SEL)) return node;
+    }
+    return null;
+  }
+
+  /** 이 항목 앞에 있는 영상 수 (배열을 만들지 않고 형제만 센다) */
+  function countItemsBefore(item) {
+    let n = 0;
+    for (let node = item.previousElementSibling; node; node = node.previousElementSibling) {
+      if (node.matches(ITEM_SEL)) n++;
+    }
+    return n;
+  }
+
+  /** 첫 항목 하나만 필요할 때 (목록 전체를 훑지 않는다) */
+  function firstVideoItem() {
+    return document.querySelector(ITEM_SEL);
   }
 
   /**
@@ -139,9 +180,22 @@
     return m ? m[1] : null;
   }
 
-  /** 영상 ID로 현재 로드된 항목 찾기 */
+  /**
+   * 영상 ID로 현재 로드된 항목 찾기.
+   *
+   * 예전엔 로드된 줄을 전부 배열로 만들고 줄마다 링크를 조회해 ID 를 비교했다.
+   * 3000줄이면 한 번 찾는 데 수천 번의 DOM 조회가 일어나고, 로딩 대기 루프는 이걸
+   * 0.26초마다 반복해서 페이지가 눈에 띄게 멈췄다. 유튜브 항목의 링크는 주소에
+   * v=<ID> 를 그대로 담고 있으므로, 선택자 하나로 브라우저가 직접 찾게 한다.
+   * (영상 ID 는 [\w-] 로만 이뤄져 선택자에 그대로 넣어도 안전하다)
+   */
+  const SAFE_VID = /^[\w-]{6,24}$/;
   function findItemByVideoId(videoId) {
-    return getVideoItems().find((it) => getVideoId(it) === videoId) || null;
+    if (!videoId || !SAFE_VID.test(videoId)) return null;
+    const hit =
+      document.querySelector(`${ITEM_SEL} a#video-title[href*="v=${videoId}"]`) ||
+      document.querySelector(`${ITEM_SEL} a#thumbnail[href*="v=${videoId}"]`);
+    return hit ? hit.closest("ytd-playlist-video-renderer") : null;
   }
 
   // ----- 저장/로드 ------------------------------------------------------------
@@ -261,29 +315,24 @@
       }
     }
 
-    let items = getVideoItems();
-    let cur = items.findIndex((it) => getVideoId(it) === s.anchorVideoId);
-    if (cur < 0) return;
+    // 목록 전체를 배열로 만들지 않고, 기준 영상의 형제만 한 칸 본다.
+    let cur = findItemByVideoId(s.anchorVideoId);
+    if (!cur) return;
 
-    let next = cur + (dir < 0 ? -1 : 1);
-    if (next < 0) {
-      toast("이미 맨 위예요");
-      return;
-    }
-    // 아래로 옮기는데 다음 영상이 아직 로딩 전이면 조금 더 불러온다
-    if (next >= items.length) {
+    let target = siblingItem(cur, dir);
+    if (!target && dir > 0) {
+      // 아래로 옮기는데 다음 영상이 아직 로딩 전이면 조금 더 불러온다
       window.scrollTo(0, document.documentElement.scrollHeight);
       await sleep(320);
-      items = getVideoItems();
-      cur = items.findIndex((it) => getVideoId(it) === s.anchorVideoId);
-      next = cur + 1;
-      if (cur < 0 || next >= items.length) {
-        toast("여기가 재생목록 맨 끝이에요");
-        return;
-      }
+      cur = findItemByVideoId(s.anchorVideoId);
+      target = cur && siblingItem(cur, dir);
+    }
+    if (!target) {
+      toast(dir < 0 ? "이미 맨 위예요" : "여기가 재생목록 맨 끝이에요");
+      return;
     }
 
-    const nvid = getVideoId(items[next]);
+    const nvid = getVideoId(target);
     if (!nvid) {
       toast("옮길 영상의 ID를 못 찾았어요");
       return;
@@ -295,7 +344,7 @@
 
     s.anchorVideoId = nvid;
     await saveSections();
-    recordNeighbors(s, items[next], items);
+    recordNeighbors(s, target);
     scheduleRender();
     jumpTo(s); // 옮긴 자리를 눈으로 확인
   }
@@ -328,15 +377,17 @@
    * (150번째가 없어지면 149번째가 그 북마크가 된다).
    * 기준 영상을 실제로 찾은 순간에만 부르므로 추가 로딩이 전혀 없다.
    */
-  function recordNeighbors(section, item, items) {
+  function recordNeighbors(section, item) {
     if (!section || !item) return;
-    items = items || getVideoItems();
-    const i = items.indexOf(item);
-    if (i < 0) return;
+    // 바로 앞 형제만 몇 칸 거슬러 올라간다 (목록 전체를 훑지 않는다)
     const prev = [];
-    for (let k = i - 1; k >= 0 && prev.length < 3; k--) {
-      const v = getVideoId(items[k]);
-      if (v && v !== section.anchorVideoId && !prev.includes(v)) prev.push(v);
+    let node = item.previousElementSibling;
+    while (node && prev.length < 3) {
+      if (node.matches(ITEM_SEL)) {
+        const v = getVideoId(node);
+        if (v && v !== section.anchorVideoId && !prev.includes(v)) prev.push(v);
+      }
+      node = node.previousElementSibling;
     }
     if (!prev.length) return;
     const cur = section.prevVideoIds || [];
@@ -351,50 +402,19 @@
    * @returns 승계한 DOM 항목 또는 null
    */
   async function inheritAnchor(section) {
-    for (const v of section.prevVideoIds || []) {
+    const prevs = section.prevVideoIds || [];
+    for (const [i, v] of prevs.entries()) {
       const it = findItemByVideoId(v);
       if (!it) continue;
-      if (data.sections.some((x) => x.id !== section.id && x.anchorVideoId === v)) continue;
+      if (hasSectionForVideo(v)) continue; // 그 영상에 이미 다른 북마크가 있으면 건너뛴다
       section.anchorVideoId = v;
-      section.prevVideoIds = (section.prevVideoIds || []).slice(
-        (section.prevVideoIds || []).indexOf(v) + 1
-      );
+      section.prevVideoIds = prevs.slice(i + 1);
       await saveSections();
       recordNeighbors(section, it);
       scheduleRender();
       return it;
     }
     return null;
-  }
-
-  /**
-   * 섹션들을 재생목록 순서대로 정렬한다.
-   * 현재 DOM에 로드된 앵커의 인덱스를 기준으로 정렬하고,
-   * 로드 안 된 앵커는 뒤로 보낸다(_idx = Infinity).
-   */
-  function sectionsInOrder() {
-    const items = getVideoItems();
-    const idxOf = new Map();
-    items.forEach((it, i) => {
-      const vid = getVideoId(it);
-      if (vid && !idxOf.has(vid)) idxOf.set(vid, i);
-    });
-    return data.sections
-      .map((s) => ({ ...s, _idx: idxOf.has(s.anchorVideoId) ? idxOf.get(s.anchorVideoId) : Infinity }))
-      .sort((a, b) => a._idx - b._idx);
-  }
-
-  /**
-   * 각 북마크에 "앞(위)에 있는 영상 수"를 붙인다.
-   * 북마크는 앵커 영상 아래에 그려지므로, 북마크 위 영상 수 = 앵커 인덱스 + 1.
-   * 영상은 위→아래로 로드되므로 이미 로드된 앵커의 앞쪽은 전부 로드돼 있어
-   * 이 값이 안정적이다(뒤쪽은 계속 추가돼 무의미).
-   */
-  function withCounts(ordered) {
-    return ordered.map((s) => ({
-      ...s,
-      _before: Number.isFinite(s._idx) ? s._idx + 1 : null,
-    }));
   }
 
   // ============================================================================
@@ -413,7 +433,7 @@
   // "점프할 때만" 1회 조회한다. 패널 순서는 저장된 순서(만든 순서) 그대로.
   function render() {
     if (!enabled || !isPlaylistPage()) return;
-    renderPanel(data.sections);
+    renderPanel();
   }
 
   /**
@@ -463,6 +483,13 @@
    * 마우스 올린 항목의 화면 위치에 맞춰 옮긴다. → 유튜브 항목 DOM 에는 절대 안 씀.
    */
   let lastOverTarget = null; // pointerover 조기 종료용
+  let toolbarVisible = false; // 스크롤마다 style 문자열을 읽지 않기 위한 플래그
+
+  function hideToolbar() {
+    if (!toolbarVisible) return;
+    toolbarVisible = false;
+    toolbarEl.style.display = "none";
+  }
 
   function setupItemToolbar() {
     if (toolbarEl) return;
@@ -476,19 +503,23 @@
     // 유튜브 자체 기능(≡ 손잡이로 끌어서 순서 바꾸기)이 시작되면, 확장이 숨겨 둔
     // 줄을 즉시 되돌린다. 숨긴 줄이 목록에 남아 있으면 유튜브가 세는 위치와
     // 화면이 어긋나 순서가 섞이거나 몇 개가 사라져 보인다.
+    // 숨긴 줄이 하나도 없으면 할 일이 없다 — 배열 길이 확인이 가장 싸므로 맨 앞에 둔다.
     const yieldToYouTube = (e) => {
+      if (!anyHidden) return;
       const t = e && e.target;
       if (t && t.closest && t.closest("#ytpd-panel")) return; // 패널 안에서의 드래그는 우리 것
-      if (hiddenEls.length) unhideAll();
+      unhideAll();
+      searchCorpus = null; // 줄이 다시 나타났으니 검색 캐시는 무효
     };
     document.addEventListener("dragstart", yieldToYouTube, { capture: true, passive: true });
+    // 유튜브 쪽 편집(≡ 끌기, ⋮ 메뉴의 삭제)은 전부 줄 위에서의 pointerdown 으로 시작한다.
+    // 특정 버튼 id 를 집어내기보다 "우리 UI 밖의 줄을 눌렀다"는 일반 규칙을 쓴다.
     document.addEventListener(
       "pointerdown",
       (e) => {
+        if (!anyHidden) return;
         const t = e.target;
-        if (t && t.closest && t.closest("#reorder, [id='reorder'], yt-icon-button#reorder")) {
-          yieldToYouTube();
-        }
+        if (t && t.closest && t.closest("ytd-playlist-video-renderer")) yieldToYouTube(e);
       },
       { capture: true, passive: true }
     );
@@ -496,21 +527,20 @@
     document.addEventListener(
       "pointerover",
       (e) => {
-        // 같은 엘리먼트 위에서 마우스가 움직일 때는 아무것도 하지 않는다.
-        // (pointerover 는 아주 자주 불리므로 가장 먼저 걸러 내는 게 싸다)
-        if (e.target === lastOverTarget) return;
+        // pointerover 는 아주 자주 불린다 — 싼 검사부터 순서대로 걸러 낸다.
+        if (e.target === lastOverTarget) return; // 같은 엘리먼트 위에서의 움직임
         lastOverTarget = e.target;
-        if (!enabled || !isPlaylistPage()) return;
-        if (toolbarEl.contains(e.target)) return; // 도구막대 위에선 유지
+        if (!enabled || !onPlaylistPage) return;
         const item = e.target.closest && e.target.closest("ytd-playlist-video-renderer");
+        // 같은 항목 안에서 움직일 때는 재측정하지 않는다
+        // (getBoundingClientRect 는 강제 레이아웃을 유발 → 잔렉의 원인. 항목이 바뀔 때만 1회)
+        if (item && item === hoverItem && toolbarVisible) return;
+        if (toolbarEl.contains(e.target)) return; // 도구막대 위에선 유지
         if (!item) {
-          if (toolbarEl.style.display !== "none") toolbarEl.style.display = "none";
+          hideToolbar();
           hoverItem = null;
           return;
         }
-        // 같은 항목 안에서 마우스가 움직일 때는 재측정하지 않는다.
-        // (getBoundingClientRect 는 강제 레이아웃을 유발 → 잔렉의 원인. 항목이 바뀔 때만 1회)
-        if (item === hoverItem && toolbarEl.style.display !== "none") return;
         hoverItem = item;
         positionToolbar(item);
       },
@@ -519,26 +549,41 @@
 
     // 스크롤 중엔 숨김(고정 좌표가 어긋나므로). 마우스 움직이면 다시 뜸.
     // 이미 숨겨져 있으면 아무것도 안 함 — 매 스크롤 이벤트마다 스타일을 쓰지 않는다.
-    window.addEventListener(
-      "scroll",
-      () => {
-        if (toolbarEl.style.display !== "none") toolbarEl.style.display = "none";
-      },
-      { capture: true, passive: true }
-    );
+    window.addEventListener("scroll", hideToolbar, { capture: true, passive: true });
   }
 
   // 유튜브 항목 오른쪽 끝의 ⋮(더보기) 버튼 열 너비. 확장 UI(도구막대·패널)는
   // 이 열을 덮지 않도록 항상 그 왼쪽에 둔다 — 안 그러면 ⋮ 를 누를 수 없다.
   const MENU_COL_PX = 60;
 
-  /** fixed 요소의 right 기준이 되는 레이아웃 뷰포트 너비 (스크롤바 제외) */
-  const viewportWidth = () => document.documentElement.clientWidth || window.innerWidth;
+  // 뷰포트 너비·패널 위치는 hover 때마다 재지 않는다. 둘 다 창 크기·패널 조작 때만
+  // 바뀌므로 값을 기억해 두고, 그때만 무효로 만든다 (getBoundingClientRect·clientWidth
+  // 는 강제 레이아웃을 일으켜 hover 마다 부르면 잔렉이 된다).
+  let vwCache = 0;
+  let panelRect = null;
+
+  function viewportWidth() {
+    if (!vwCache) vwCache = document.documentElement.clientWidth || window.innerWidth;
+    return vwCache;
+  }
+
+  function getPanelRect() {
+    if (!panelRect && panelEl && panelEl.style.display !== "none") {
+      panelRect = panelEl.getBoundingClientRect();
+    }
+    return panelRect;
+  }
+
+  /** 창 크기·패널 위치·패널 내용이 바뀌면 기억해 둔 측정값을 버린다 */
+  function invalidateMeasurements() {
+    vwCache = 0;
+    panelRect = null;
+  }
 
   function positionToolbar(item) {
     const r = item.getBoundingClientRect();
     if (r.width === 0 || r.bottom < 40 || r.top > window.innerHeight) {
-      toolbarEl.style.display = "none";
+      hideToolbar();
       return;
     }
     updateDock(r.right, r.left); // 방금 잰 값을 패널 위치에도 재사용 (추가 측정 없음)
@@ -546,6 +591,7 @@
     const top = r.top + 6;
     const vw = viewportWidth();
     toolbarEl.style.display = "flex";
+    toolbarVisible = true;
     toolbarEl.style.top = top + "px";
     toolbarEl.style.left = "auto";
 
@@ -554,8 +600,7 @@
 
     // 패널과 세로로 겹치면, 영상 왼쪽 끝까지 멀리 가지 말고
     // "패널 바로 왼쪽"까지만 밀어준다.
-    const panel =
-      panelEl && panelEl.style.display !== "none" ? panelEl.getBoundingClientRect() : null;
+    const panel = getPanelRect();
     if (panel && panel.width > 0 && top < panel.bottom && top + 36 > panel.top) {
       const minRight = vw - panel.left + 12; // 패널 왼쪽 바로 옆
       if (rightPx < minRight) rightPx = minRight;
@@ -579,11 +624,15 @@
    * 왼쪽 위치일 때 패널을 이 선 바깥(왼쪽 여백)에 두기 위한 값이다.
    * 헤더 카드가 목록보다 왼쪽에 있으므로 둘 중 더 왼쪽을 쓴다.
    */
+  let headEl = null; // 재생목록 헤더 카드 (화면 이동 때만 다시 찾는다)
   function contentLeftEdge(listLeft) {
     let left = listLeft > 0 ? listLeft : Infinity;
-    const head = document.querySelector(
-      "ytd-playlist-header-renderer, yt-page-header-renderer, #page-header"
-    );
+    if (!headEl || !headEl.isConnected) {
+      headEl = document.querySelector(
+        "ytd-playlist-header-renderer, yt-page-header-renderer, #page-header"
+      );
+    }
+    const head = headEl;
     if (head) {
       const hr = head.getBoundingClientRect();
       if (hr.width > 0 && hr.left < left) left = hr.left;
@@ -599,6 +648,11 @@
       dockRight = want; // 값이 같으면 스타일을 건드리지 않는다
       panelEl.style.setProperty("--ytpd-dock-right", want + "px");
     }
+
+    // 왼쪽 값은 패널이 실제로 왼쪽에 있을 때만 잰다 — 기본(오른쪽)에서는 쓰이지도
+    // 않는데 hover 마다 문서 전체 querySelector + 레이아웃을 유발하던 비용이었다.
+    const pos = panelEl.dataset.pos;
+    if (pos !== "bl" && pos !== "tl") return;
 
     // 왼쪽 위치: 본문 왼쪽의 빈 여백에 넣어 유튜브 화면을 가리지 않게 한다.
     // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞추고(최소 PANEL_W_MIN),
@@ -621,7 +675,7 @@
 
   function measureDock() {
     if (!enabled || !isPlaylistPage()) return;
-    const it = document.querySelector("ytd-playlist-video-renderer:not(.ytpd-hidden)");
+    const it = firstVideoItem();
     if (!it) return;
     const r = it.getBoundingClientRect();
     updateDock(r.right, r.left);
@@ -630,6 +684,7 @@
   let resizeTimer = null;
   function setupDockResize() {
     window.addEventListener("resize", () => {
+      invalidateMeasurements();
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(measureDock, 200);
     });
@@ -657,7 +712,7 @@
       toast("먼저 북마크를 만들어 주세요");
       return;
     }
-    const domPos = getVideoItems().indexOf(item);
+    const domPos = countItemsBefore(item);
     modalChoose("어느 북마크 밑으로 보낼까요?", data.sections, vid, (s) => {
       moveVideoToSection(vid, s, domPos >= 0 ? domPos : null);
     });
@@ -819,6 +874,8 @@
     panelEl.innerHTML = `
       <div class="ytpd-panel-head">
         <span class="ytpd-panel-title">북마크</span>
+        <button class="ytpd-stale" type="button" hidden
+          title="↦북마크 로 순서를 바꾼 뒤예요. 이 페이지에 떠 있는 목록은 옛 순서라, 지금 영상을 삭제하거나 끌어서 옮기면 엉뚱한 영상이 지워질 수 있어요.&#10;클릭 = 새로고침">⟳</button>
         <span class="ytpd-spacer"></span>
         <button class="ytpd-nav-top" type="button" title="재생목록 맨 처음으로">⤒</button>
         <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
@@ -836,6 +893,8 @@
     document.body.appendChild(panelEl);
 
     panelEl.querySelector(".ytpd-set").addEventListener("click", openMiniSettings);
+    // 경고는 패널을 접어도 보여야 하므로 헤더에 둔다 (본문은 접으면 숨겨진다)
+    panelEl.querySelector(".ytpd-stale").addEventListener("click", () => location.reload());
 
     // 맨 처음/맨 끝은 헤더에 둔다 — 패널을 접어도 계속 쓸 수 있게.
     panelEl.querySelector(".ytpd-nav-top").addEventListener("click", jumpToStart);
@@ -843,6 +902,7 @@
 
     panelEl.querySelector(".ytpd-toggle").addEventListener("click", () => {
       panelEl.classList.toggle("ytpd-collapsed");
+      invalidateMeasurements();
       panelEl.querySelector(".ytpd-toggle").textContent =
         panelEl.classList.contains("ytpd-collapsed") ? "▼" : "▲";
     });
@@ -851,6 +911,7 @@
     panelEl.querySelector(".ytpd-pos").addEventListener("click", async () => {
       const next = nextPanelPos(panelEl.dataset.pos || "tr");
       applyPanelPos(next);
+      invalidateMeasurements();
       measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
       await savePanelPos(next);
     });
@@ -874,12 +935,15 @@
     });
   }
 
-  function renderPanel(ordered) {
+  function renderPanel() {
     ensurePanel();
+    // 경고 배지는 헤더에 있어 패널을 접어도 보인다
+    panelEl.querySelector(".ytpd-stale").hidden = !listStale;
+    invalidateMeasurements(); // 패널 내용이 바뀌면 기억해 둔 크기는 무효
+
+    const ordered = data.sections;
     const rows = panelEl.querySelector(".ytpd-rows");
     rows.innerHTML = "";
-
-    if (!ordered) ordered = data.sections; // 인자 없이 불릴 때 대비 (DOM 스캔 없음)
 
     // 현재 재생목록 이름 (클릭하면 북마크가 있는 다른 재생목록 펼치기)
     rows.appendChild(buildPlaylistHeader());
@@ -958,12 +1022,17 @@
         justDragged = true;
         setTimeout(() => (justDragged = false), 0);
       });
+      row.addEventListener("dragenter", () => {
+        // dragover 는 드래그 중 계속 불리므로 크기는 들어올 때 한 번만 잰다
+        // (getBoundingClientRect 는 강제 레이아웃)
+        const r = row.getBoundingClientRect();
+        dragMidY = r.top + r.height / 2;
+      });
       row.addEventListener("dragover", (e) => {
         if (!draggingSectionId || draggingSectionId === s.id) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        const r = row.getBoundingClientRect();
-        const after = e.clientY > r.top + r.height / 2;
+        const after = e.clientY > dragMidY;
         row.classList.toggle("ytpd-drop-after", after);
         row.classList.toggle("ytpd-drop-before", !after);
       });
@@ -1143,9 +1212,13 @@
     });
   }
 
+  /**
+   * "방금 옮긴 영상으로" 안내만 지운다.
+   * listStale(= 유튜브 목록이 옛 순서라는 안전 경고)은 여기서 끄지 않는다 —
+   * 줄을 숨겼다고 삭제가 안전해지는 건 아니고, 그건 새로고침으로만 풀린다.
+   */
   function clearPendingMoved() {
     pendingMoved = null;
-    listStale = false;
     chrome.storage.local.remove("ytpd:lastMoved");
     scheduleRender();
   }
@@ -1153,42 +1226,26 @@
   /** "방금 옮긴 영상으로" 줄 — 누르면 그 영상까지 찾아간다 */
   function buildMovedRow(videoId) {
     const row = document.createElement("div");
-    row.className = "ytpd-row ytpd-row-moved" + (listStale ? " ytpd-row-stale" : "");
+    row.className = "ytpd-row ytpd-row-moved";
     const dot = document.createElement("span");
     dot.className = "ytpd-row-dot";
     const name = document.createElement("span");
     name.className = "ytpd-row-name";
-    name.textContent = listStale ? "⟳ 새로고침 후 삭제하세요" : "↩ 방금 옮긴 영상으로";
+    name.textContent = "↩ 방금 옮긴 영상으로";
     row.appendChild(dot);
     row.appendChild(name);
-    row.title = listStale
-      ? "↦북마크 로 순서를 바꾸면 이 페이지에 떠 있는 목록은 옛 순서 그대로예요.\n" +
-        "그 상태에서 영상을 삭제하거나 드래그하면 엉뚱한 영상이 지워지거나 자리가 밀립니다.\n" +
-        "클릭 = 새로고침 (새로고침 뒤에는 방금 옮긴 영상으로 가는 줄이 떠요)"
-      : "↦북마크 로 보낸 영상으로 이동합니다";
+    row.title = "↦북마크 로 보낸 영상으로 이동합니다";
     row.addEventListener("click", () => {
-      if (listStale) {
-        location.reload();
-        return;
-      }
       jumpToVideoId(videoId).then((item) => {
         if (item) clearPendingMoved();
       });
     });
-
-    // 새로고침이 필요한 상태에서도 "그냥 그 영상 보기"는 남겨 둔다
-    if (listStale) {
-      row.appendChild(
-        rowBtn("↩", "새로고침 없이 방금 옮긴 영상 위치만 보기", () => {
-          jumpToVideoId(videoId);
-        })
-      );
-    }
     row.appendChild(rowBtn("✕", "이 줄 숨기기", () => clearPendingMoved()));
     return row;
   }
 
   let draggingSectionId = null; // 패널에서 끌고 있는 북마크 id
+  let dragMidY = 0;             // 지금 지나가는 줄의 세로 중앙 (dragenter 때 1회 측정)
   let justDragged = false;      // 드래그 직후의 click(=점프) 무시용
 
   function clearDropMarks() {
@@ -1315,21 +1372,14 @@
   // ============================================================================
   // 섹션 점프는 앵커 영상 ID로 위임
   async function jumpTo(section) {
-    let item = findItemByVideoId(section.anchorVideoId);
+    // 찾기·로딩·강조는 jumpToVideoId 가 전부 한다. 여기서 더하는 건 두 가지뿐:
+    // 성공하면 이웃 기억, 실패하면 바로 앞 영상으로 승계.
+    const item = await jumpToVideoId(section.anchorVideoId, { quiet: true });
     if (item) {
       recordNeighbors(section, item);
-      flashItem(item);
       return item;
     }
-    toast("영상 찾는 중… (멀리 있으면 시간이 걸려요)");
-    item = await ensureLoaded(section.anchorVideoId);
-    if (item) {
-      recordNeighbors(section, item);
-      flashItem(item);
-      scheduleRender();
-      return item;
-    }
-    // 기준 영상이 재생목록에서 삭제된 경우 — 바로 앞 영상으로 승계 (추가 로딩 없음)
+    // 기준 영상이 재생목록에서 삭제된 경우 (이미 끝까지 훑은 뒤라 추가 로딩 없음)
     const heir = await inheritAnchor(section);
     if (heir) {
       flashItem(heir);
@@ -1337,16 +1387,15 @@
       return heir;
     }
     toast("영상을 못 찾았어요 (재생목록에서 삭제된 영상일 수 있어요)");
-    scheduleRender();
     return null;
   }
 
   /** 기본 북마크: 재생목록 맨 처음으로 */
   function jumpToStart() {
-    const items = getVideoItems();
-    if (items[0]) {
-      items[0].scrollIntoView({ behavior: "smooth", block: "center" });
-      flashItem(items[0]);
+    const first = firstVideoItem();
+    if (first) {
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+      flashItem(first);
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -1354,7 +1403,6 @@
 
   /** 기본 북마크: 재생목록 맨 끝으로 (끝까지 로딩한 뒤 이동) */
   async function jumpToEnd() {
-    isAutoJumping = true;
     toast("맨 끝으로 가는 중… (끝까지 로딩)");
     try {
       let lastCount = -1;
@@ -1362,7 +1410,7 @@
       for (let tries = 0; tries < 80; tries++) {
         window.scrollTo(0, document.documentElement.scrollHeight);
         await sleep(280);
-        const count = getVideoItems().length;
+        const count = countVideoItems();
         if (count === lastCount) {
           if (++stagnant >= 3) break; // 더 안 불려오면 끝 도달
         } else {
@@ -1370,14 +1418,13 @@
           lastCount = count;
         }
       }
-      const items = getVideoItems();
-      const last = items[items.length - 1];
+      const all = document.querySelectorAll(ITEM_SEL);
+      const last = all[all.length - 1];
       if (last) {
         last.scrollIntoView({ behavior: "smooth", block: "center" });
         flashItem(last);
       }
     } finally {
-      isAutoJumping = false;
       scheduleRender();
     }
   }
@@ -1396,34 +1443,34 @@
     let item = findItemByVideoId(videoId);
     if (item) return item;
 
-    isAutoJumping = true;
-    try {
-      let lastCount = -1;
-      let stagnant = 0;
-      // "여러 번 연속으로 더 안 불려올 때"만 끝으로 판단.
-      // (예전엔 3번=0.8초만 멈춰도 포기해서, 로딩이 살짝 끊기면 못 찾는다고 떴다)
-      for (let tries = 0; tries < maxTries; tries++) {
-        window.scrollTo(0, document.documentElement.scrollHeight);
-        await sleep(260);
+    let lastCount = -1;
+    let stagnant = 0;
+    // "여러 번 연속으로 더 안 불려올 때"만 끝으로 판단.
+    // (예전엔 3번=0.8초만 멈춰도 포기해서, 로딩이 살짝 끊기면 못 찾는다고 떴다)
+    for (let tries = 0; tries < maxTries; tries++) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await sleep(260);
 
-        item = findItemByVideoId(videoId);
-        if (item) return item;
+      item = findItemByVideoId(videoId);
+      if (item) return item;
 
-        const count = getVideoItems().length;
-        if (count === lastCount) {
-          if (++stagnant >= 8) break; // ~2초간 아무것도 안 불려오면 진짜 끝
-        } else {
-          stagnant = 0;
-          lastCount = count;
-        }
+      const count = countVideoItems();
+      if (count === lastCount) {
+        if (++stagnant >= 8) break; // ~2초간 아무것도 안 불려오면 진짜 끝
+      } else {
+        stagnant = 0;
+        lastCount = count;
       }
-      return null;
-    } finally {
-      isAutoJumping = false;
     }
+    return null;
   }
 
-  async function jumpToVideoId(videoId) {
+  /**
+   * 영상으로 이동 + 강조. 로드 전이면 찾을 때까지 스크롤한다.
+   * @param {{quiet?: boolean}} opts quiet=true 면 실패 토스트를 띄우지 않는다
+   *   (부르는 쪽에 승계 같은 다음 수가 있을 때 — jumpTo 참고)
+   */
+  async function jumpToVideoId(videoId, opts) {
     let item = findItemByVideoId(videoId);
     if (item) {
       flashItem(item);
@@ -1433,7 +1480,7 @@
     item = await ensureLoaded(videoId);
     if (item) {
       flashItem(item);
-    } else {
+    } else if (!(opts && opts.quiet)) {
       toast("영상을 못 찾았어요 (재생목록에서 삭제된 영상일 수 있어요)");
     }
     scheduleRender();
@@ -1738,22 +1785,27 @@
     return anchorList.length ? anchorList[0].position : null;
   }
 
-  // "↦북마크"로 아직 로드 안 된 곳으로 보낸 영상의 원래 노드들 (숨김 처리한 것).
-  // 페이지 이동/새로고침 시 init 에서 되돌린다.
-  let hiddenEls = [];
+  // "↦북마크"로 아직 로드 안 된 곳으로 보낸 영상의 원래 줄은 클래스로만 표시한다.
+  // (엘리먼트를 배열에 담아 두면, 유튜브가 그 줄을 재활용했을 때 엉뚱한 영상이
+  //  숨겨진 채로 남는다 — 영상 ID 캐시를 없앤 것과 같은 이유다.)
+  // anyHidden 은 "지금 숨긴 게 있나"를 O(1) 로 답하기 위한 플래그일 뿐이다.
+  let anyHidden = false;
 
   function hideMovedItem(node) {
     node.classList.add("ytpd-hidden");
-    hiddenEls.push(node);
+    anyHidden = true;
     if (hoverItem === node) {
       hoverItem = null;
-      if (toolbarEl) toolbarEl.style.display = "none";
+      if (toolbarEl) hideToolbar();
     }
   }
 
   function unhideAll() {
-    for (const el of hiddenEls) el.classList.remove("ytpd-hidden");
-    hiddenEls = [];
+    if (!anyHidden) return;
+    anyHidden = false;
+    document
+      .querySelectorAll("ytd-playlist-video-renderer.ytpd-hidden")
+      .forEach((el) => el.classList.remove("ytpd-hidden"));
   }
 
   /**
@@ -1771,20 +1823,17 @@
    * 그걸 다시 비우지 않아 그 뒤로 계속 느려지기 때문이다(성능 설계 원칙).
    *
    * 사용자가 버튼을 누른 이 순간에만 동작하고, 상시 감시는 하지 않는다.
-   * @returns "moved" (숨김 + 기준 영상 강조) | "hidden" (숨김만) | false
    */
   function reflectMoveInDOM(movingVid, refVid) {
     const movingNode = findItemByVideoId(movingVid);
-    if (!movingNode) return false;
+    if (!movingNode) return;
     hideMovedItem(movingNode);
-    const refNode = findItemByVideoId(refVid); // 숨긴 노드는 getVideoItems 에서 제외됨
+    const refNode = findItemByVideoId(refVid); // 숨긴 줄은 ITEM_SEL 에서 제외된다
     if (refNode && refNode !== movingNode) {
       // 어디로 갔는지 보이게 기준 영상만 강조한다 (목록 구조는 건드리지 않음).
       // 방금 DOM 을 건드린 직후라 smooth 스크롤은 무거워서 즉시 이동.
       flashItem(refNode, false);
-      return "moved";
     }
-    return "hidden";
   }
 
   // 외부에서 부르는 진입점: 직렬 큐에 넣어 순서를 보장한다.
@@ -1856,7 +1905,7 @@
       });
       // 새로고침 없이 화면에도 바로 반영 (기준이 로드돼 있으면 DOM 에서 자리 이동,
       // 아니면 원래 자리에서만 치우고, 새 자리는 그 구간이 로드될 때 유튜브가 그린다).
-      const reflected = reflectMoveInDOM(videoId, domRefVid);
+      reflectMoveInDOM(videoId, domRefVid);
       toast(
         `"${section.label}" 밑으로 옮겼어요 — 영상을 삭제하거나 드래그하기 전에 새로고침하세요`
       );
@@ -1884,26 +1933,6 @@
   }
 
   // ============================================================================
-  // MutationObserver (항목 lazy load 감시)
-  // ============================================================================
-  // 로딩이 "멈춘 뒤"에만 한 번 그린다.
-  // 새 항목이 계속 들어오는 동안(=유튜브가 목록 로딩 중)에는 타이머가 계속 리셋되어
-  // 확장이 DOM 을 전혀 건드리지 않는다 → 로딩과의 충돌/무한로딩·렉 방지.
-  let settleTimer = null;
-  function scheduleRenderOnSettle() {
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => {
-      settleTimer = null;
-      render();
-    }, 500);
-  }
-
-  // 안전 모드: 재생목록을 MutationObserver 로 감시하지 않는다.
-  // (유튜브 로딩 중 확장이 끼어들지 않아 무한로딩·충돌이 없음)
-  function attachObserver() {}
-  function detachObserver() {}
-
-  // ============================================================================
   // 초기화 / SPA 대응
   // ============================================================================
   function loadEnabled() {
@@ -1914,7 +1943,6 @@
 
   /** 끄기: 페이지에서 패널·북마크·도구막대를 모두 치우고 감시 중단 */
   function disableUI() {
-    detachObserver();
     document.querySelectorAll(".ytpd-divider").forEach((el) => el.remove());
     unhideAll();
     if (toolbarEl && toolbarEl.parentNode) toolbarEl.parentNode.removeChild(toolbarEl);
@@ -1923,7 +1951,6 @@
   }
 
   async function init() {
-    detachObserver();
     // 페이지 이동 중 모달이 열려 있었다면 스크롤 잠금이 남을 수 있으니 정리
     if (!document.querySelector(".ytpd-modal-back")) {
       document.documentElement.classList.remove("ytpd-modal-open");
@@ -1931,6 +1958,10 @@
     clearFlash();
     unhideAll(); // 이전 페이지에서 숨겨 둔 항목은 이 페이지에선 무효
     listStale = false; // 새로 그려진 목록이므로 유튜브 쪽 순서도 최신이다
+    computeIsPlaylistPage(); // hover 경로가 읽는 캐시
+    titleCache = "";
+    headEl = null;
+    invalidateMeasurements();
     setupItemToolbar(); // hover 도구막대 위임 (최초 1회만 실제 등록)
 
     enabled = await loadEnabled();
@@ -1962,15 +1993,13 @@
       waited += 200;
       if (!isPlaylistPage()) return; // 그 사이 페이지 이동
     }
-    attachObserver();
     await loadPendingMoved();
     // 이미 화면에 로드돼 있으면 공짜로 그 자리를 보여 준다 (추가 로딩 없음)
     if (pendingMoved) {
       const it = findItemByVideoId(pendingMoved);
       if (it) {
         flashItem(it);
-        pendingMoved = null;
-        chrome.storage.local.remove("ytpd:lastMoved");
+        clearPendingMoved();
       }
     }
     render();

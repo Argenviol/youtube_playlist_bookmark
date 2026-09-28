@@ -1,8 +1,8 @@
 // ============================================================================
-// content.js — YouTube 재생목록 북마크 (북마크)
+// content.js — YouTube 재생목록 북마크
 //
-// youtube.com/playlist?list=... 페이지에서 재생목록 안에 북마크(=북마크)을 넣고,
-// 우측 하단 패널에서 북마크를 클릭하면 그 영상 위치로 점프한다.
+// youtube.com/playlist?list=... 페이지에서 재생목록에 북마크를 달고,
+// 화면 위쪽(왼쪽/오른쪽) 패널에서 북마크를 클릭하면 그 영상 위치로 점프한다.
 // 북마크는 "위치(인덱스)"가 아니라 "영상 ID(anchorVideoId)"를 앵커로 저장한다.
 //   → 영상을 옮기거나 추가해도 북마크가 그 영상을 따라간다.
 //
@@ -29,7 +29,7 @@
   let data = { sections: [] };    // 현재 재생목록의 북마크 데이터
   let renderTimer = null;         // 렌더 디바운스 타이머
   let signedIn = false;           // OAuth 로그인 상태 (자동 로그인, "↦북마크" 전용)
-  let panelEl = null;             // 우측 하단 패널 DOM
+  let panelEl = null;             // 떠 있는 북마크 패널 DOM
   let toolbarEl = null;           // 공용 hover 도구막대 (항목마다 만들지 않음)
   let hoverItem = null;           // 도구막대가 현재 올라가 있는 항목
   let enabled = true;             // 확장 사용 여부 (팝업 토글, "ytpd:enabled")
@@ -241,7 +241,6 @@
   }
 
   function saveSections() {
-    data.updatedAt = Date.now();
     // 재생목록 제목을 같이 캐시해 둔다 → "북마크가 있는 다른 재생목록" 목록에서
     // API 호출 없이 이름을 보여줄 수 있다. (동기화 문서에는 올리지 않는 로컬 편의 정보)
     const t = getPlaylistTitle();
@@ -251,7 +250,7 @@
     });
   }
 
-  // ----- 패널 위치 (오른쪽 위 → 오른쪽 아래 → 왼쪽 아래 → 왼쪽 위, 전역 저장) ----
+  // ----- 패널 위치 (왼쪽 위 / 오른쪽 위 — 버튼 하나에 한 자리, 전역 저장) -------
   const PANEL_POSITIONS = ["tl", "tr"];
 
   function loadPanelPos() {
@@ -484,7 +483,7 @@
 
     const moveBtn = document.createElement("button");
     moveBtn.type = "button";
-    moveBtn.className = "ytpd-tool-btn ytpd-tool-move";
+    moveBtn.className = "ytpd-tool-btn";
     moveBtn.textContent = "↦북마크";
     moveBtn.title = "이 영상을 북마크 바로 밑으로 보내기 (구글 로그인 필요)";
     moveBtn.addEventListener("click", (e) => {
@@ -517,13 +516,22 @@
     toolbarEl.style.display = "none";
   }
 
+  // 문서 이벤트는 한 번만 붙인다. 도구막대 엘리먼트는 팝업으로 끄면 페이지에서
+  // 떼어 내므로(disableUI), 다시 켤 때 붙어 있는지 따로 확인한다 —
+  // 예전엔 "toolbarEl 이 있으면 통째로 건너뛰기" 라서 껐다 켜면 새로고침 전까지
+  // ＋북마크·↦북마크 가 다시 안 떴다.
+  let toolbarBound = false;
+
   function setupItemToolbar() {
-    if (toolbarEl) return;
-    toolbarEl = buildToolbar();
-    toolbarEl.style.position = "fixed";
-    toolbarEl.style.zIndex = "9998";
-    toolbarEl.style.display = "none";
-    document.body.appendChild(toolbarEl);
+    if (!toolbarEl) {
+      toolbarEl = buildToolbar();
+      toolbarEl.style.position = "fixed";
+      toolbarEl.style.zIndex = "9998";
+      toolbarEl.style.display = "none";
+    }
+    if (!toolbarEl.isConnected) document.body.appendChild(toolbarEl);
+    if (toolbarBound) return;
+    toolbarBound = true;
     setupDockResize();
 
     // 유튜브 자체 기능(≡ 손잡이로 끌어서 순서 바꾸기)이 시작되면, 확장이 숨겨 둔
@@ -643,27 +651,31 @@
   let dockWidth = -1;
 
   const PANEL_W = 372;     // 기본 패널 너비 (content.css 와 같은 값)
-  const PANEL_W_MIN = 268; // 왼쪽에 둘 때 이보다는 좁히지 않는다 (읽기 힘들어짐)
+  const PANEL_W_MIN = 220; // 여백이 좁으면 여기까지 줄여서라도 목록을 안 덮는다
 
   /**
-   * 유튜브 본문(재생목록 헤더 카드 + 영상 목록)의 왼쪽 끝 좌표.
-   * 왼쪽 위치일 때 패널을 이 선 바깥(왼쪽 여백)에 두기 위한 값이다.
-   * 헤더 카드가 목록보다 왼쪽에 있으므로 둘 중 더 왼쪽을 쓴다.
+   * 왼쪽 위치일 때 패널이 침범하면 안 되는 선 — 유튜브 본문의 왼쪽 끝.
+   *
+   * 기준은 영상 목록의 왼쪽 끝이다(반드시 눌러야 하는 곳). 재생목록 헤더 카드가
+   * 목록보다 왼쪽까지 나와 있으면 그쪽에 맞추는데, 헤더가 화면을 가로지르는
+   * 배너형이라 왼쪽 여백이 거의 없을 때는 무시한다 — 예전엔 그런 헤더 때문에
+   * 이 값이 0 이 되어 왼쪽 배치 계산이 통째로 취소됐고, 패널이 기본 좌표(18px)에
+   * 그대로 남아 영상 목록을 덮었다.
    */
   let headEl = null; // 재생목록 헤더 카드 (화면 이동 때만 다시 찾는다)
   function contentLeftEdge(listLeft) {
-    let left = listLeft > 0 ? listLeft : Infinity;
+    let left = listLeft > 0 ? listLeft : 0;
     if (!headEl || !headEl.isConnected) {
       headEl = document.querySelector(
         "ytd-playlist-header-renderer, yt-page-header-renderer, #page-header"
       );
     }
-    const head = headEl;
-    if (head) {
-      const hr = head.getBoundingClientRect();
-      if (hr.width > 0 && hr.left < left) left = hr.left;
+    if (headEl) {
+      const hr = headEl.getBoundingClientRect();
+      // 헤더 왼쪽에 패널이 들어갈 자리가 남을 때만 헤더를 기준으로 삼는다
+      if (hr.width > 0 && hr.left < left && hr.left - 24 >= PANEL_W_MIN) left = hr.left;
     }
-    return Number.isFinite(left) ? left : 0;
+    return left;
   }
 
   function updateDock(listRight, listLeft) {
@@ -680,21 +692,19 @@
     if (panelEl.dataset.pos !== "tl") return;
 
     // 왼쪽 위치: 본문 왼쪽의 빈 여백에 넣어 유튜브 화면을 가리지 않게 한다.
-    // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞추고(최소 PANEL_W_MIN),
-    // 그래도 안 되는 좁은 창에서는 왼쪽 끝에 붙인다.
+    // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞춘다(PANEL_W_MIN 까지).
+    // 그보다도 좁은 창에서만 어쩔 수 없이 조금 겹친다.
     const edge = contentLeftEdge(listLeft);
-    if (edge > 0) {
-      const gap = edge - 24; // 화면 왼쪽 12px + 본문과의 간격 12px
-      const w = Math.max(PANEL_W_MIN, Math.min(PANEL_W, Math.round(gap)));
-      const wantL = Math.max(12, Math.round(edge - 12 - w));
-      if (w !== dockWidth) {
-        dockWidth = w;
-        panelEl.style.setProperty("--ytpd-panel-w-left", w + "px");
-      }
-      if (wantL !== dockLeft) {
-        dockLeft = wantL;
-        panelEl.style.setProperty("--ytpd-dock-left", wantL + "px");
-      }
+    const gap = Math.round(edge) - 24; // 화면 왼쪽 12px + 본문과의 간격 12px
+    const w = Math.min(PANEL_W, Math.max(PANEL_W_MIN, gap));
+    const wantL = Math.max(12, Math.round(edge) - 12 - w);
+    if (w !== dockWidth) {
+      dockWidth = w;
+      panelEl.style.setProperty("--ytpd-panel-w-left", w + "px");
+    }
+    if (wantL !== dockLeft) {
+      dockLeft = wantL;
+      panelEl.style.setProperty("--ytpd-dock-left", wantL + "px");
     }
   }
 
@@ -788,7 +798,10 @@
 
   /** 모달을 띄우고 배경 스크롤을 잠근다. Esc 로도 닫힌다. */
   function mountModal(back) {
-    document.querySelector(".ytpd-modal-back")?.remove(); // 겹쳐 뜨지 않게
+    // 겹쳐 뜨지 않게 — 그냥 remove() 하면 그 모달의 keydown 리스너가 document 에
+    // 남으므로 반드시 closeModal 을 거친다.
+    const prev = document.querySelector(".ytpd-modal-back");
+    if (prev) closeModal(prev);
     document.body.appendChild(back);
     if (!document.documentElement.classList.contains("ytpd-modal-open")) {
       lockedScrollY = window.scrollY; // 잠금을 풀 때 되돌리기 위해 기억
@@ -834,7 +847,6 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = "ytpd-modal-opt";
-      b.innerHTML = "";
       const t = document.createElement("div");
       t.textContent = c.label;
       const d = document.createElement("div");
@@ -890,7 +902,7 @@
   }
 
   // ============================================================================
-  // 우측 하단 점프 패널
+  // 떠 있는 점프 패널 (왼쪽 위 / 오른쪽 위)
   // ============================================================================
   function ensurePanel() {
     if (panelEl && document.body.contains(panelEl)) return;
@@ -935,8 +947,7 @@
         panelEl.classList.contains("ytpd-collapsed") ? "▼" : "▲";
     });
 
-    // 패널 위치 전환 — 누를 때마다 6방향으로 순환 (선택을 저장해 다음에도 유지)
-    // 위치는 순환이 아니라 버튼 하나에 한 자리씩 (왼쪽 위 / 오른쪽 위)
+    // 패널 위치 — 버튼 하나에 한 자리씩 (왼쪽 위 / 오른쪽 위). 고른 자리는 저장된다.
     for (const btn of panelEl.querySelectorAll(".ytpd-pos")) {
       btn.addEventListener("click", async () => {
         const pos = btn.dataset.pos;
@@ -978,8 +989,6 @@
 
     // 현재 재생목록 이름 (클릭하면 북마크가 있는 다른 재생목록 펼치기)
     rows.appendChild(buildPlaylistHeader());
-
-    // 맨 처음 / 맨 끝은 헤더 버튼(⤒ ⤓)으로 옮겼다 — 접어도 보이도록.
 
     if (pendingMoved) rows.appendChild(buildMovedRow(pendingMoved));
 
@@ -1317,26 +1326,43 @@
   }
 
   /**
-   * 검색 대상 전체 목록을 가져온다 (캐시). 화면에 로드된 항목만 대상이라
-   * 아직 스크롤로 안 불러온 아래쪽은 못 찾을 수 있다.
+   * 검색 대상 목록을 만든다 (캐시). 화면에 로드된 항목만 대상이라
+   * 아직 스크롤로 안 불러온 아래쪽은 못 찾는다.
+   *
+   * 스크롤로 항목이 더 불려오면 캐시를 다시 만든다 — 항목 수만 비교하므로
+   * (querySelectorAll().length, 배열을 만들지 않는다) 검색할 때마다 목록을 통째로
+   * 다시 읽지 않으면서도 방금 불러온 영상이 빠지지 않는다.
+   *
+   * 비교용 정규화(normalizeText)는 여기서 한 번만 해 둔다. 예전엔 글자를 칠 때마다
+   * 항목 수천 개를 매번 정규화해서 긴 재생목록에서 검색이 눈에 띄게 굼떴다.
    */
-  async function getSearchCorpus() {
-    if (searchCorpus) return searchCorpus;
+  let searchCorpusCount = -1;
 
-    // 화면에 로드된 항목 (불완전 — lazy load)
-    searchCorpus = getVideoItems().map((it, idx) => ({
-      videoId: getVideoId(it),
-      position: idx,
-      title: (it.querySelector("#video-title")?.textContent || "").trim(),
-      channel: (it.querySelector("ytd-channel-name")?.textContent || "").trim(),
-      src: "dom",
-    }));
+  function getSearchCorpus() {
+    const n = countVideoItems();
+    if (searchCorpus && searchCorpusCount === n) return searchCorpus;
+    searchCorpusCount = n;
+    searchCorpus = getVideoItems().map((it, idx) => {
+      // 제목 링크 하나에서 제목과 영상 ID 를 같이 뽑는다 (줄마다 DOM 조회 1회 절약)
+      const a = it.querySelector("a#video-title");
+      const title = (a?.textContent || "").trim();
+      const m = a && V_RE.exec(a.getAttribute("href") || "");
+      const channel = (it.querySelector("ytd-channel-name")?.textContent || "").trim();
+      return {
+        videoId: m ? m[1] : getVideoId(it), // 제목 링크가 없는 줄만 썸네일 쪽을 본다
+        position: idx,
+        title,
+        channel,
+        normTitle: normalizeText(title),
+        normChannel: normalizeText(channel),
+      };
+    });
     return searchCorpus;
   }
 
   function matchEntry(entry, song, artist) {
-    const t = normalizeText(entry.title);
-    const c = normalizeText(entry.channel);
+    const t = entry.normTitle;
+    const c = entry.normChannel;
     if (song && artist) {
       return t.includes(song) && (c.includes(artist) || t.includes(artist));
     }
@@ -1345,38 +1371,28 @@
     return t.includes(q) || c.includes(q);
   }
 
-  async function runSearch(rawQuery) {
+  function runSearch(rawQuery) {
     const box = panelEl.querySelector(".ytpd-search-results");
     const q = (rawQuery || "").trim();
     if (!q) {
       box.innerHTML = "";
       return;
     }
-    box.innerHTML = `<div class="ytpd-search-status">검색 중…</div>`;
 
     const { song, artist } = parseQuery(q);
-    let corpus;
-    try {
-      corpus = await getSearchCorpus();
-    } catch (_) {
-      box.innerHTML = `<div class="ytpd-search-status">검색 목록을 불러오지 못했어요</div>`;
-      return;
-    }
-
+    const corpus = getSearchCorpus();
     const hits = corpus.filter((e) => e.videoId && matchEntry(e, song, artist));
     box.innerHTML = "";
 
-    // 결과 헤더 (있음/없음 + 소스 안내)
+    // 결과 헤더 (있음/없음 + "화면에 불러온 부분만" 안내)
     const status = document.createElement("div");
     status.className = "ytpd-search-status";
-    const srcLabel = corpus[0]?.src === "api" ? "전체" : "로드된 부분만";
     if (hits.length) {
-      status.innerHTML = `✅ <b>있음</b> · ${hits.length}곳 <span class="ytpd-search-src">(${srcLabel})</span>`;
+      status.innerHTML = `✅ <b>있음</b> · ${hits.length}곳 <span class="ytpd-search-src">(로드된 부분만)</span>`;
     } else {
-      status.innerHTML = `❌ <b>없음</b> <span class="ytpd-search-src">(${srcLabel})</span>`;
-      if (corpus[0]?.src === "dom") {
-        status.innerHTML += `<div class="ytpd-search-tip">아래로 스크롤해 더 불러오면 전체에서 찾을 수 있어요</div>`;
-      }
+      status.innerHTML =
+        `❌ <b>없음</b> <span class="ytpd-search-src">(로드된 부분만)</span>` +
+        `<div class="ytpd-search-tip">아래로 스크롤해 더 불러오면 전체에서 찾을 수 있어요</div>`;
     }
     box.appendChild(status);
 
@@ -1522,31 +1538,21 @@
     return item;
   }
 
-  /** 앵커 영상으로 스크롤 + 북마크/항목 플래시 */
   /**
-   * 점프한 영상을 눈에 띄게 표시한다.
+   * 점프한 영상으로 스크롤하고 눈에 띄게 표시한다.
    * 먼 곳으로 점프하면 스크롤·로딩에 시간이 걸려서, 짧게 번쩍이면 도착하기 전에
    * 사라져 버린다. 그래서 사라지지 않는 강조를 걸고 충분히 오래 유지한다.
    * (다음 점프 때 이전 강조는 자동으로 지워진다)
    */
   function flashItem(item, smooth = true) {
     clearFlash();
-    // 북마크는 앵커 영상 아래(다음 형제)에 있다.
-    const divider = item.nextElementSibling?.classList?.contains("ytpd-divider")
-      ? item.nextElementSibling
-      : null;
-    const target = divider || item;
     // smooth 스크롤은 애니메이션 내내 매 프레임 긴 목록을 다시 그려야 해서,
     // 방금 DOM 을 건드린 직후(영상 이동)에 쓰면 눈에 띄게 멈칫거린다.
     // 그런 경우는 즉시 이동(instant)으로 그 비용을 없앤다.
-    target.scrollIntoView({ behavior: smooth ? "smooth" : "instant", block: "center" });
+    item.scrollIntoView({ behavior: smooth ? "smooth" : "instant", block: "center" });
 
     item.classList.add("ytpd-flash");
     flashedEls.push(item);
-    if (divider) {
-      divider.classList.add("ytpd-flash");
-      flashedEls.push(divider);
-    }
     flashTimer = setTimeout(clearFlash, HIGHLIGHT_MS);
   }
 
@@ -1989,16 +1995,27 @@
     });
   }
 
-  /** 끄기: 페이지에서 패널·북마크·도구막대를 모두 치우고 감시 중단 */
+  /** 끄기: 패널·도구막대를 치우고 숨겨 둔 줄을 되돌린다 (팝업 토글) */
   function disableUI() {
-    document.querySelectorAll(".ytpd-divider").forEach((el) => el.remove());
     unhideAll();
-    if (toolbarEl && toolbarEl.parentNode) toolbarEl.parentNode.removeChild(toolbarEl);
+    if (toolbarEl) {
+      hideToolbar(); // 다시 켤 때 "보이는 중" 상태로 남지 않게
+      toolbarEl.remove();
+    }
     hoverItem = null;
+    lastOverTarget = null;
     if (panelEl) panelEl.style.display = "none";
   }
 
+  // 화면 이동이 빠르면 앞선 init 이 저장소 응답을 기다리는 동안 다음 init 이 시작된다.
+  // 뒤늦게 깨어난 쪽이 이미 바뀐 재생목록에 옛 데이터를 쓰지 않도록, 자기 차례가
+  // 아직 유효한지 await 마다 확인하고 아니면 조용히 빠진다.
+  let initToken = 0;
+
   async function init() {
+    const myTurn = ++initToken;
+    const stale = () => myTurn !== initToken;
+
     // 페이지 이동 중 모달이 열려 있었다면 스크롤 잠금이 남을 수 있으니 정리
     if (!document.querySelector(".ytpd-modal-back")) {
       document.documentElement.classList.remove("ytpd-modal-open");
@@ -2013,6 +2030,7 @@
     setupItemToolbar(); // hover 도구막대 위임 (최초 1회만 실제 등록)
 
     enabled = await loadEnabled();
+    if (stale()) return;
     if (!enabled) {
       disableUI();
       return;
@@ -2032,16 +2050,19 @@
     searchCorpus = null;
     lastPlacedBySection = {};
     await loadSections();
+    if (stale()) return;
     await refreshAuthState();
+    if (stale()) return;
 
     // 컨테이너가 아직 없을 수 있으니 잠깐 기다렸다 옵저버 부착 + 첫 렌더
     let waited = 0;
     while (!document.querySelector("ytd-playlist-video-renderer") && waited < 5000) {
       await sleep(200);
       waited += 200;
-      if (!isPlaylistPage()) return; // 그 사이 페이지 이동
+      if (stale() || !isPlaylistPage()) return; // 그 사이 페이지 이동
     }
     await loadPendingMoved();
+    if (stale()) return;
     // 이미 화면에 로드돼 있으면 공짜로 그 자리를 보여 준다 (추가 로딩 없음)
     if (pendingMoved) {
       const it = findItemByVideoId(pendingMoved);

@@ -1,6 +1,6 @@
 /* ============================================================================
    content.css — YouTube 다크 테마 위에 얹는 스타일
-   강조색은 호박색(#f0b32a) 계열을 구분선 라벨/점/플래시에만 절제해서 사용.
+   강조색은 호박색(#f0b32a) 계열을 패널 점/강조 표시에만 절제해서 사용.
    ============================================================================ */
 
 :root {
@@ -39,7 +39,7 @@
   color: #1c1c1e;
 }
 
-/* ---------- body 모달 (구분선 이름 / 보내기 선택) ------------------------- */
+/* ---------- body 모달 (북마크 이름 / 보내기 선택 / 설정) ------------------ */
 .ytpd-modal-back {
   position: fixed;
   inset: 0;
@@ -117,16 +117,6 @@
   white-space: normal;
 }
 
-/* ---------- 구분선 본체 --------------------------------------------------- */
-.ytpd-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 0 6px;
-  padding: 2px 4px;
-  position: relative;
-}
-
 /* ---------- "↦북마크"로 아직 로드 안 된 곳에 보낸 영상의 원래 노드 --------- */
 /* 새 자리는 그 구간이 로드될 때 유튜브가 그리므로, 원래 자리에서만 치운다.
    (노드를 지우거나 옮기지 않고 숨기기만 → 유튜브 목록 구조는 그대로) */
@@ -145,11 +135,13 @@ ytd-playlist-video-renderer.ytpd-hidden {
   /* (넓은 box-shadow 는 강조가 켜진 20초 동안 스크롤마다 다시 칠해져 뺐다) */
 }
 
-/* ---------- 떠 있는 패널 (6방향 위치) ------------------------------------ */
+/* ---------- 떠 있는 패널 (왼쪽 위 / 오른쪽 위) --------------------------- */
 #ytpd-panel {
   position: fixed;
   z-index: 9999;
   width: 372px;
+  /* 창을 좁히면 패널이 화면 밖으로 밀려 버튼이 안 눌리던 것을 막는다 */
+  max-width: calc(100vw - 24px);
   max-height: 66vh;
   display: flex;
   flex-direction: column;
@@ -239,7 +231,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
 .ytpd-panel-head button:hover {
   color: #1c1c1e;
   background: var(--ytpd-amber);
-  border-color: var(--ytpd-amber);
+  border-color: var(--ytpd-amber-dim);
 }
 
 .ytpd-panel-head .ytpd-pos {
@@ -263,10 +255,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
 /* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
 .ytpd-panel-head .ytpd-set {
   font-size: 15px;
-}
-
-.ytpd-panel-head button:hover {
-  border-color: var(--ytpd-amber-dim);
 }
 
 .ytpd-panel-body {
@@ -425,11 +413,10 @@ ytd-playlist-video-renderer.ytpd-hidden {
 }
 
 .ytpd-empty {
-  font-size: 12.5px;
   padding: 12px 8px;
-  color: var(--ytpd-text-dim);
   font-size: 12px;
   line-height: 1.5;
+  color: var(--ytpd-text-dim);
 }
 
 /* ---------- 패널 맨 위: 현재 재생목록 + 다른 재생목록 목록 ------------------ */
@@ -674,13 +661,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   color: #fff;
 }
 
-.ytpd-row-add.ytpd-btn-active {
-  opacity: 1;
-  background: var(--ytpd-amber);
-  border-color: var(--ytpd-amber);
-  color: #1c1c1e;
-}
-
 /* ---------- 패널: 검색 (노래제목 / 가수) -------------------------------- */
 .ytpd-search {
   margin-bottom: 6px;
@@ -788,10 +768,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
 
 /* ---------- 모션 최소화 존중 -------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .ytpd-flash { animation: none; }
-
   #ytpd-toast { transition: opacity 0.15s ease; }
-
 }
 
 /* ---------- 모달이 열려 있는 동안 뒤 페이지 고정 ------------------------- */

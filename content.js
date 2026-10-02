@@ -12,7 +12,7 @@
 //
 // 위 대부분은 로컬 저장(chrome.storage.local)만 쓴다. "↦북마크"(영상 이동)만
 // 실제 재생목록 순서를 바꾸는 쓰기 작업이라 YouTube Data API v3 가 필요하고,
-// 그건 구글 정책상 OAuth 로그인이 필수다. 로그인 버튼은 패널의 작은 ⚙ 에 있고,
+// 그건 구글 정책상 OAuth 로그인이 필수다. 로그인 버튼은 확장 아이콘 팝업의 ⚙ 에 있고,
 // 그 기능을 처음 쓸 때 구글 로그인 창이 자동으로 한 번 뜬다(그 뒤로는 자동 유지).
 // 인증·API 호출은 background.js 가 담당하고, 여기서는 chrome.runtime.sendMessage
 // 로 요청만 한다.
@@ -933,7 +933,6 @@
         <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
         <button class="ytpd-pos" type="button" title="패널 위치 바꾸기">◥</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
-        <button class="ytpd-set" type="button" title="구글 로그인 설정 (↦북마크 영상 이동용)">⚙</button>
       </div>
       <div class="ytpd-panel-body">
         <div class="ytpd-search">
@@ -946,7 +945,6 @@
 
     // 화살표로 감싼다 — 그냥 넘기면 click 이벤트가 첫 인자(오류 메시지) 자리로 들어가
     // "로그인 안 됨 — [object PointerEvent]" 처럼 표시된다.
-    panelEl.querySelector(".ytpd-set").addEventListener("click", () => openMiniSettings());
     // 경고는 패널을 접어도 보여야 하므로 헤더에 둔다 (본문은 접으면 숨겨진다)
     panelEl.querySelector(".ytpd-stale").addEventListener("click", () => location.reload());
 
@@ -2097,6 +2095,14 @@
     enabled = changes["ytpd:enabled"].newValue !== false;
     if (enabled) init();
     else disableUI();
+  });
+
+  // 팝업의 ⚙ 버튼 → 지금 보고 있는 탭에 설정 모달을 연다.
+  // 메시지는 활성 탭에만 가므로 다른 유튜브 탭에서 모달이 열리지 않는다.
+  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+    if (!msg || msg.type !== "ytpd:openSettings") return;
+    if (!document.querySelector(".ytpd-modal-back")) openMiniSettings();
+    reply({ ok: true });
   });
 
   // 유튜브는 새로고침 없이 이동 → yt-navigate-finish 로 재초기화

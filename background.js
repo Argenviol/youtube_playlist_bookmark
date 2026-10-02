@@ -79,7 +79,7 @@ async function getOAuthConfig() {
   const clientId = ((await storageGet("ytpd:clientId")) || DEFAULT_CLIENT_ID || "").trim();
   if (!clientId) {
     throw new Error(
-      "구글 API 설정이 없어요. 패널의 구글 로그인 옆 ⚙ 에서 OAuth 클라이언트 ID를 입력해 주세요."
+      "구글 API 설정이 없어요. 확장 아이콘 팝업의 ⚙ 에서 OAuth 클라이언트 ID를 입력해 주세요."
     );
   }
   const clientSecret = ((await storageGet("ytpd:clientSecret")) || "").trim();

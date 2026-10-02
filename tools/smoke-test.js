@@ -212,6 +212,10 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
   await popup.bringToFront();
   await popup.click(".slider");
   ok("팝업 토글이 다시 켜진다", await popup.isChecked("#toggle"));
+  // 팝업 ⚙ — 유튜브 탭이 아닌 곳(여기선 팝업 자신)에서 누르면 안내만 뜬다
+  await popup.click("#settings");
+  await popup.waitForTimeout(200);
+  ok("유튜브 탭이 아니면 ⚙ 가 안내 문구를 띄운다", await popup.isVisible("#setHint"));
   await page.bringToFront();
   await page.waitForTimeout(900);
   ok("다시 켜면 패널이 돌아온다", await page.isVisible("#ytpd-panel"));
@@ -236,9 +240,13 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
      JSON.stringify(tbState) + " dbg9=" + JSON.stringify(dbg9));
 
   // ---- 설정 모달 ------------------------------------------------------------
-  await page.click("#ytpd-panel .ytpd-set");
+  ok("패널 헤더에는 더 이상 ⚙ 가 없다", !(await page.$("#ytpd-panel .ytpd-set")));
+  // 실제 팝업은 활성 탭에 메시지를 보낸다. 테스트에선 팝업이 탭으로 열려 있으므로
+  // 유튜브 탭을 앞으로 가져온 뒤 팝업 페이지 안에서 ⚙ 버튼을 누른다.
+  await page.bringToFront();
+  await popup.evaluate(() => document.getElementById("settings").click());
   await page.waitForSelector(".ytpd-modal-wide", { timeout: 5000 });
-  ok("⚙ 로 설정 모달이 열린다", true);
+  ok("팝업의 ⚙ 로 설정 모달이 열린다", true);
   ok("로그인 상태 문구에 이벤트 객체가 안 들어간다 (회귀)",
     !(await page.textContent(".ytpd-set-status")).includes("PointerEvent"),
     await page.textContent(".ytpd-set-status"));

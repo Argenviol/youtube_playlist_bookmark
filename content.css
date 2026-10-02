@@ -260,11 +260,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
   color: var(--ytpd-amber);
 }
 
-/* 설정(⚙)만 조금 크게 — 아이콘 모양이 달라 같은 크기로 두면 작아 보인다 */
-.ytpd-panel-head .ytpd-set {
-  font-size: 15px;
-}
-
 .ytpd-panel-body {
   overflow-y: auto;
   padding: 6px;

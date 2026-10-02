@@ -14,5 +14,5 @@
 - OAuth 클라이언트 시크릿은 저장소에도 대화에도 남기지 않는다.
 
 ## 확인
-코드를 고쳤으면 커밋 전에 `node tools/smoke-test.js` 를 돌린다(30개 항목).
+코드를 고쳤으면 커밋 전에 `node tools/smoke-test.js` 를 돌린다(35개 항목).
 성능에 영향이 있을 만한 변경이면 `node tools/perf-test.js` 도 돌리고 수치를 보고한다.

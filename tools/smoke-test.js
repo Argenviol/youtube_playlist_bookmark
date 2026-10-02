@@ -191,6 +191,34 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
   ok("왼쪽에서 영상 목록과 안 겹친다", spots[1].pRight <= spots[1].itLeft + 1 && spots[2].pRight <= spots[2].itLeft + 1,
      `tl=${spots[1].pRight} bl=${spots[2].pRight} listLeft=${spots[1].itLeft}`);
 
+  // ---- 맨 끝(⤓): 기준은 재생목록의 마지막 영상 -----------------------------
+  // 목록 아래 맞춤 동영상(추천) 영역에도 "이어 불러오기" 표시가 있는 상황을 만든다.
+  // 목록 자신의 표시만 봐야 하므로, 목록은 이미 끝났다고 보고 바로 마지막 영상에 멈춘다.
+  await page.evaluate(() => {
+    const recs = document.createElement("div");
+    recs.id = "fake-recs";
+    recs.style.cssText = "height:1500px";
+    recs.innerHTML = "<ytd-continuation-item-renderer>추천 더 불러오기</ytd-continuation-item-renderer>";
+    document.body.appendChild(recs);
+    for (const el of document.querySelectorAll(".ytpd-flash")) el.classList.remove("ytpd-flash"); // 앞선 점프 강조
+    window.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(300);
+  const t0 = Date.now();
+  await page.click("#ytpd-panel .ytpd-nav-end");
+  await page.waitForSelector(".ytpd-flash", { timeout: 6000 });
+  const tEnd = Date.now() - t0;
+  const endInfo = await page.evaluate(() => {
+    const all = document.querySelectorAll("ytd-playlist-video-renderer");
+    const last = all[all.length - 1];
+    const f = document.querySelector(".ytpd-flash");
+    const r = last.getBoundingClientRect();
+    return { lastFlashed: f === last, inView: r.top >= 0 && r.bottom <= innerHeight };
+  });
+  ok("⤓ 는 추천 영역이 아니라 재생목록의 마지막 영상에 멈춘다", endInfo.lastFlashed, JSON.stringify(endInfo));
+  ok("⤓ 가 추천 영역의 로딩 표시를 기다리며 헤매지 않는다 (<1.4초)", tEnd < 1400, tEnd + "ms");
+  await page.evaluate(() => document.getElementById("fake-recs").remove());
+
   // ---- 접기/펼치기 ----------------------------------------------------------
   await page.click("#ytpd-panel .ytpd-toggle");
   await page.waitForTimeout(200);
@@ -212,10 +240,23 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
   await popup.bringToFront();
   await popup.click(".slider");
   ok("팝업 토글이 다시 켜진다", await popup.isChecked("#toggle"));
-  // 팝업 ⚙ — 유튜브 탭이 아닌 곳(여기선 팝업 자신)에서 누르면 안내만 뜬다
-  await popup.click("#settings");
-  await popup.waitForTimeout(200);
-  ok("유튜브 탭이 아니면 ⚙ 가 안내 문구를 띄운다", await popup.isVisible("#setHint"));
+  // 팝업 ⚙ — 유튜브가 아닌 곳에서도 설정 페이지가 새 탭으로 열린다
+  const [optPage] = await Promise.all([
+    ctx.waitForEvent("page", { timeout: 5000 }),
+    popup.click("#settings"),
+  ]);
+  await optPage.waitForLoadState();
+  ok("팝업 ⚙ 가 설정 페이지를 연다", optPage.url().endsWith("/options.html"), optPage.url());
+  await optPage.waitForSelector(".ytpd-set-status", { timeout: 5000 });
+  ok("설정 페이지에 로그인 설정 화면이 그려진다",
+     await optPage.isVisible("[data-clientid]") && await optPage.isVisible("[data-login]"));
+  ok("설정 페이지에는 닫기 버튼이 없다", (await optPage.$("[data-close]")) === null);
+  await optPage.waitForFunction(() => document.querySelector("[data-redirect]").value.length > 0,
+    null, { timeout: 5000 });
+  ok("설정 페이지에 리디렉션 URI 가 채워진다",
+     (await optPage.inputValue("[data-redirect]")).includes(".chromiumapp.org"),
+     await optPage.inputValue("[data-redirect]"));
+  await optPage.close();
   await page.bringToFront();
   await page.waitForTimeout(900);
   ok("다시 켜면 패널이 돌아온다", await page.isVisible("#ytpd-panel"));
@@ -241,12 +282,17 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 
   // ---- 설정 모달 ------------------------------------------------------------
   ok("패널 헤더에는 더 이상 ⚙ 가 없다", !(await page.$("#ytpd-panel .ytpd-set")));
-  // 실제 팝업은 활성 탭에 메시지를 보낸다. 테스트에선 팝업이 탭으로 열려 있으므로
-  // 유튜브 탭을 앞으로 가져온 뒤 팝업 페이지 안에서 ⚙ 버튼을 누른다.
+  // 로그인이 안 된 채로 ↦북마크 를 누르면 같은 설정 화면이 모달로 뜬다
   await page.bringToFront();
-  await popup.evaluate(() => document.getElementById("settings").click());
+  await page.mouse.move(5, 5);
+  await page.evaluate(() => document.querySelectorAll("ytd-playlist-video-renderer")[7]
+    .scrollIntoView({ block: "center" }));
+  await page.locator("ytd-playlist-video-renderer").nth(7).hover();
+  await page.waitForSelector(".ytpd-item-tools", { state: "visible", timeout: 5000 });
+  await page.click(".ytpd-item-tools button:has-text('↦북마크')");
+  await page.click(".ytpd-modal-opt");
   await page.waitForSelector(".ytpd-modal-wide", { timeout: 5000 });
-  ok("팝업의 ⚙ 로 설정 모달이 열린다", true);
+  ok("로그인 실패 시 설정 모달이 열린다 (↦북마크)", true);
   ok("로그인 상태 문구에 이벤트 객체가 안 들어간다 (회귀)",
     !(await page.textContent(".ytpd-set-status")).includes("PointerEvent"),
     await page.textContent(".ytpd-set-status"));

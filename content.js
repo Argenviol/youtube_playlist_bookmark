@@ -250,15 +250,23 @@
     });
   }
 
-  // ----- 패널 위치 (왼쪽 위 / 오른쪽 위 — 버튼 하나에 한 자리, 전역 저장) -------
-  const PANEL_POSITIONS = ["tl", "tr"];
+  // ----- 패널 위치 (버튼 하나로 네 모서리를 돌아가며 — 전역 저장) -------------
+  // 오른쪽 위 → 오른쪽 아래 → 왼쪽 위 → 왼쪽 아래 → 다시 오른쪽 위
+  const PANEL_POSITIONS = ["tr", "br", "tl", "bl"];
+  const PANEL_POS_INFO = {
+    tr: { glyph: "◥", name: "오른쪽 위" },
+    br: { glyph: "◢", name: "오른쪽 아래" },
+    tl: { glyph: "◤", name: "왼쪽 위" },
+    bl: { glyph: "◣", name: "왼쪽 아래" },
+  };
+  const isLeftPos = (pos) => pos === "tl" || pos === "bl";
 
   function loadPanelPos() {
     return new Promise((resolve) => {
       chrome.storage.local.get(["ytpd:panelPos"], (res) => {
         let pos = res["ytpd:panelPos"];
-        if (pos === "bl") pos = "tl"; // 아래쪽 위치는 없앴다 — 같은 쪽 위로 이관
-        else if (pos === "br" || pos === "bottom" || pos === "top") pos = "tr";
+        if (pos === "bottom") pos = "br";
+        else if (pos === "top") pos = "tr";
         if (!PANEL_POSITIONS.includes(pos)) pos = "tr"; // 모르는 값은 오른쪽 위로
         resolve(pos);
       });
@@ -269,14 +277,21 @@
       chrome.storage.local.set({ "ytpd:panelPos": pos }, () => resolve());
     });
   }
+  function nextPanelPos(pos) {
+    return PANEL_POSITIONS[(PANEL_POSITIONS.indexOf(pos) + 1) % PANEL_POSITIONS.length];
+  }
   function applyPanelPos(pos) {
     if (!panelEl) return;
     if (!PANEL_POSITIONS.includes(pos)) pos = "tr";
     for (const p of PANEL_POSITIONS) panelEl.classList.remove("ytpd-pos-" + p);
     panelEl.classList.add("ytpd-pos-" + pos);
     panelEl.dataset.pos = pos;
-    for (const btn of panelEl.querySelectorAll(".ytpd-pos")) {
-      btn.classList.toggle("ytpd-pos-on", btn.dataset.pos === pos);
+    // 버튼은 "지금 자리"를 모양으로 보여 주고, 누르면 다음 자리로 간다
+    const btn = panelEl.querySelector(".ytpd-pos");
+    if (btn) {
+      const next = nextPanelPos(pos);
+      btn.textContent = PANEL_POS_INFO[pos].glyph;
+      btn.title = `패널 위치: ${PANEL_POS_INFO[pos].name} (누르면 ${PANEL_POS_INFO[next].name}로)`;
     }
   }
 
@@ -689,7 +704,7 @@
 
     // 왼쪽 값은 패널이 실제로 왼쪽에 있을 때만 잰다 — 기본(오른쪽)에서는 쓰이지도
     // 않는데 hover 마다 문서 전체 querySelector + 레이아웃을 유발하던 비용이었다.
-    if (panelEl.dataset.pos !== "tl") return;
+    if (!isLeftPos(panelEl.dataset.pos)) return;
 
     // 왼쪽 위치: 본문 왼쪽의 빈 여백에 넣어 유튜브 화면을 가리지 않게 한다.
     // 여백이 기본 너비보다 좁으면 패널을 그만큼 좁혀서 맞춘다(PANEL_W_MIN 까지).
@@ -902,7 +917,7 @@
   }
 
   // ============================================================================
-  // 떠 있는 점프 패널 (왼쪽 위 / 오른쪽 위)
+  // 떠 있는 점프 패널 (네 모서리 중 하나)
   // ============================================================================
   function ensurePanel() {
     if (panelEl && document.body.contains(panelEl)) return;
@@ -916,8 +931,7 @@
         <span class="ytpd-spacer"></span>
         <button class="ytpd-nav-top" type="button" title="재생목록 맨 처음으로">⤒</button>
         <button class="ytpd-nav-end" type="button" title="재생목록 맨 끝으로 (끝까지 로딩)">⤓</button>
-        <button class="ytpd-pos" type="button" data-pos="tl" title="패널을 왼쪽 위로">◤</button>
-        <button class="ytpd-pos" type="button" data-pos="tr" title="패널을 오른쪽 위로">◥</button>
+        <button class="ytpd-pos" type="button" title="패널 위치 바꾸기">◥</button>
         <button class="ytpd-toggle" type="button" title="접기/펼치기">▲</button>
         <button class="ytpd-set" type="button" title="구글 로그인 설정 (↦북마크 영상 이동용)">⚙</button>
       </div>
@@ -947,16 +961,14 @@
         panelEl.classList.contains("ytpd-collapsed") ? "▼" : "▲";
     });
 
-    // 패널 위치 — 버튼 하나에 한 자리씩 (왼쪽 위 / 오른쪽 위). 고른 자리는 저장된다.
-    for (const btn of panelEl.querySelectorAll(".ytpd-pos")) {
-      btn.addEventListener("click", async () => {
-        const pos = btn.dataset.pos;
-        applyPanelPos(pos);
-        invalidateMeasurements();
-        measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
-        await savePanelPos(pos);
-      });
-    }
+    // 패널 위치 — 버튼 하나를 누를 때마다 다음 모서리로. 고른 자리는 저장된다.
+    panelEl.querySelector(".ytpd-pos").addEventListener("click", async () => {
+      const pos = nextPanelPos(panelEl.dataset.pos);
+      applyPanelPos(pos);
+      invalidateMeasurements();
+      measureDock(); // 왼쪽/오른쪽에 따라 필요한 값이 다르므로 한 번 다시 잰다
+      await savePanelPos(pos);
+    });
     loadPanelPos().then(applyPanelPos);
 
     // 검색 (노래제목 / 가수)

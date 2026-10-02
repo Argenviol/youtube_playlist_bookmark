@@ -135,7 +135,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   /* (넓은 box-shadow 는 강조가 켜진 20초 동안 스크롤마다 다시 칠해져 뺐다) */
 }
 
-/* ---------- 떠 있는 패널 (왼쪽 위 / 오른쪽 위) --------------------------- */
+/* ---------- 떠 있는 패널 (네 모서리) --------------------------- */
 #ytpd-panel {
   position: fixed;
   z-index: 9999;
@@ -156,7 +156,7 @@ ytd-playlist-video-renderer.ytpd-hidden {
   contain: layout style paint;
 }
 
-/* 패널 위치 (왼쪽 위 / 오른쪽 위). 클래스는 content.js 의 applyPanelPos 가
+/* 패널 위치 (네 모서리). 클래스는 content.js 의 applyPanelPos 가
    "ytpd-pos-" + 값 으로 붙이므로 이 이름들은 JS 에 그대로 적혀 있지 않다 (지우지 말 것).
    가로 위치는 유튜브 목록을 덮지 않도록 --ytpd-dock-right / --ytpd-dock-left 로 맞춘다. */
 #ytpd-panel.ytpd-pos-tr {
@@ -166,10 +166,25 @@ ytd-playlist-video-renderer.ytpd-hidden {
   left: auto;
 }
 
+#ytpd-panel.ytpd-pos-br {
+  top: auto;
+  bottom: 18px;
+  right: var(--ytpd-dock-right, 18px);
+  left: auto;
+}
+
 /* 왼쪽 위치는 본문 왼쪽 여백에 들어가므로, 여백이 좁으면 패널도 같이 좁아진다 */
 #ytpd-panel.ytpd-pos-tl {
   top: 70px;
   bottom: auto;
+  right: auto;
+  left: var(--ytpd-dock-left, 18px);
+  width: var(--ytpd-panel-w-left, 372px);
+}
+
+#ytpd-panel.ytpd-pos-bl {
+  top: auto;
+  bottom: 18px;
   right: auto;
   left: var(--ytpd-dock-left, 18px);
   width: var(--ytpd-panel-w-left, 372px);
@@ -236,13 +251,6 @@ ytd-playlist-video-renderer.ytpd-hidden {
 
 .ytpd-panel-head .ytpd-pos {
   font-size: 14px;
-}
-
-/* 지금 선택된 위치 버튼 */
-.ytpd-panel-head .ytpd-pos-on {
-  color: #1c1c1e;
-  background: var(--ytpd-amber);
-  border-color: var(--ytpd-amber);
 }
 
 /* 맨 처음/맨 끝 — 접어도 보이도록 헤더에 있다. 화살표가 작아 조금 키운다 */

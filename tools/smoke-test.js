@@ -172,19 +172,24 @@ const PAGE = (n) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">
   await page.waitForTimeout(300);
 
   // ---- 패널 위치 ------------------------------------------------------------
-  await page.click("#ytpd-panel .ytpd-pos[data-pos='tl']");
-  await page.waitForTimeout(400);
-  const left = await page.evaluate(() => {
-    const p = document.querySelector("#ytpd-panel").getBoundingClientRect();
-    const it = document.querySelectorAll("ytd-playlist-video-renderer")[0].getBoundingClientRect();
-    return { tl: document.querySelector("#ytpd-panel").classList.contains("ytpd-pos-tl"),
-             pRight: p.right, itLeft: it.left, pw: p.width };
-  });
-  ok("왼쪽 위로 옮겨진다", left.tl);
-  ok("왼쪽에서 영상 목록과 안 겹친다", left.pRight <= left.itLeft + 1,
-     `panelRight=${left.pRight} listLeft=${left.itLeft} w=${left.pw}`);
-  await page.click("#ytpd-panel .ytpd-pos[data-pos='tr']");
-  await page.waitForTimeout(300);
+  const posOf = () => page.evaluate(() => document.querySelector("#ytpd-panel").dataset.pos);
+  const spots = [];
+  for (let i = 0; i < 4; i++) {
+    await page.click("#ytpd-panel .ytpd-pos");
+    await page.waitForTimeout(350);
+    const g = await page.evaluate(() => {
+      const p = document.querySelector("#ytpd-panel").getBoundingClientRect();
+      const it = document.querySelectorAll("ytd-playlist-video-renderer")[0].getBoundingClientRect();
+      return { pos: document.querySelector("#ytpd-panel").dataset.pos, top: p.top, bottom: p.bottom,
+               pRight: p.right, itLeft: it.left, pw: p.width, vh: innerHeight };
+    });
+    spots.push(g);
+  }
+  ok("위치 버튼 하나로 오른쪽 아래 → 왼쪽 위 → 왼쪽 아래 → 오른쪽 위 순으로 돈다",
+     spots.map((g) => g.pos).join(",") === "br,tl,bl,tr", spots.map((g) => g.pos).join(","));
+  ok("아래 위치는 화면 아래쪽에 붙는다", spots[0].bottom > spots[0].vh - 40 && spots[2].bottom > spots[2].vh - 40);
+  ok("왼쪽에서 영상 목록과 안 겹친다", spots[1].pRight <= spots[1].itLeft + 1 && spots[2].pRight <= spots[2].itLeft + 1,
+     `tl=${spots[1].pRight} bl=${spots[2].pRight} listLeft=${spots[1].itLeft}`);
 
   // ---- 접기/펼치기 ----------------------------------------------------------
   await page.click("#ytpd-panel .ytpd-toggle");

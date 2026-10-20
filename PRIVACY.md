@@ -59,7 +59,7 @@
 
 ## 문의
 
-okatayumeji@gmail.com
+https://github.com/Argenviol/youtube_playlist_bookmark/issues
 
 ---
 
@@ -87,4 +87,4 @@ Permissions requested: `storage`, `identity`, and the
 user's own playlists. Access can be revoked at any time at
 https://myaccount.google.com/permissions.
 
-Contact: okatayumeji@gmail.com
+Contact: https://github.com/Argenviol/youtube_playlist_bookmark/issues

@@ -48,7 +48,7 @@
 
 ## 8. 문의
 
-okatayumeji@gmail.com
+https://github.com/Argenviol/youtube_playlist_bookmark/issues
 
 ---
 
@@ -77,4 +77,4 @@ The extension depends on YouTube and Google APIs; it may stop working if those
 services change. These terms may change without notice, effective when posted here.
 If you disagree, uninstall the extension.
 
-Contact: okatayumeji@gmail.com
+Contact: https://github.com/Argenviol/youtube_playlist_bookmark/issues
